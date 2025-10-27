@@ -1,0 +1,246 @@
+# WorkerNet Installer Configuration
+# Скопируйте этот файл в install.conf.yml и настройте параметры
+
+# Основные настройки
+workernet:
+  version: "4.1.0"
+  domain: "default"  # workernet.example.com или "default" для _ apache или nginx
+  webserver: "nginx"  # apache или nginx
+  install_dir: "/var/www/workernet"
+
+# База данных PostgreSQL
+database:
+  name: "workernet"
+  user: "root"
+  # password: "auto"  # auto = генерировать автоматически
+  # password: "custom_password"  # или указать свой
+  port: 5432
+  locale: "ru_RU.UTF-8"
+  encoding: "UTF-8"
+  extensions:
+    - postgis
+
+# Redis
+redis:
+  port: 6379
+  # password: "auto"  # auto = генерировать SHA256 хеш
+  timeout: 0  # бесконечное соединение
+  maxmemory: "2gb"
+  maxmemory_policy: "allkeys-lru"
+
+# RabbitMQ
+rabbitmq:
+  amqp_port: 5672
+  management_port: 15672
+  websocket_port: 15674
+  
+  users:
+    admin:
+      username: "admin"
+      # password: "auto"
+      tags: "administrator"
+      permissions:
+        vhost: "/"
+        configure: ".*"
+        write: ".*"
+        read: ".*"
+    
+    workernet:
+      username: "workernet"
+      # password: "auto"
+      tags: "monitoring"
+      permissions:
+        vhost: "/"
+        configure: ".*"
+        write: ".*"
+        read: ".*"
+    
+    stomp:
+      username: "workernet-stomp"
+      # password: "auto"
+      tags: ""
+      permissions:
+        vhost: "/"
+        configure: "^erp.stomp:id-.*"
+        write: ""
+        read: "^erp.stomp:id-.*"
+
+# PHP
+php:
+  version: "8.3"
+  extensions:
+    - cli
+    - fpm
+    - common
+    - curl
+    - intl
+    - mbstring
+    - opcache
+    - pgsql
+    - readline
+    - xml
+    - zip
+    - snmp
+    - gd
+    - posix
+    - soap
+    - ldap
+  
+  settings:
+    timezone: "auto"  # auto = определить из системы
+    post_max_size: "100M"
+    upload_max_filesize: "100M"
+    max_execution_time: 300
+    max_input_time: 300
+    memory_limit: "512M"
+  
+  fpm:
+    pm: "dynamic"
+    pm_max_children: 15
+    pm_start_servers: 5
+    pm_min_spare_servers: 5
+    pm_max_spare_servers: 35
+    request_terminate_timeout: 300
+
+# Python
+python:
+  version: "3"  # Использовать системный Python 3
+  packages:
+    - pip
+    - virtualenv
+  venv: true  # Создать venv для poller
+
+# Supervisor
+supervisor:
+  workers:
+    core-worker:
+      enabled: true
+      numprocs: 4
+      autorestart: true
+    
+    poller:
+      enabled: true
+      numprocs: 2
+      autorestart: true
+
+# Веб-сервер
+webserver:
+  type: "nginx"  # apache или nginx
+  
+  apache:
+    modules:
+      - rewrite
+      - proxy_fcgi
+      - setenvif
+      - proxy
+      - proxy_wstunnel
+    server_name: "auto"  # auto = использовать domain
+    document_root: "auto"  # auto = /var/www/workernet/public
+    
+  nginx:
+    worker_processes: "auto"
+    worker_connections: 1024
+    client_max_body_size: "100M"
+
+# Firewall
+firewall:
+  enabled: true
+  type: "iptables"
+  
+  allowed_ports:
+    - 22    # SSH
+    - 80    # HTTP
+    - 443   # HTTPS
+    - 15672 # RabbitMQ Management (рекомендуется закрыть после настройки)
+  
+  policies:
+    input: "DROP"
+    output: "ACCEPT"  # Разрешить исходящие
+    forward: "DROP"
+
+# Логирование
+logging:
+  level: "INFO"  # DEBUG, INFO, WARN, ERROR
+  directory: "/var/log/workernet"
+  
+  logrotate:
+    enabled: true
+    rotate: 7  # дней
+    size: "100M"
+    compress: true
+
+# Cron задачи
+cron:
+  enabled: true
+  tasks:
+    - name: "workernet_cleanup"
+      schedule: "0 2 * * *"  # Каждый день в 2:00
+      command: "/var/www/workernet/console/yii cleanup"
+
+# Модули для установки (опционально)
+modules:
+  enabled:[]
+  # Раскомментируйте нужные:
+   - wnm_checker
+   - wnm_billing
+   - wnm_asterisk
+   - wnm_gps
+   - wnm_iferr
+   - wnm_observer
+   - wnm_pon
+   - wnm_radio
+
+# Безопасность
+security:
+  generate_strong_passwords: true  # Генерировать стойкие пароли
+  password_length: 16  # Длина генерируемых паролей
+  
+  ssl:
+    enabled: false
+    provider: "letsencrypt"  # letsencrypt, custom
+    email: "admin@example.com"
+    # certificate: "/path/to/cert.pem"
+    # key: "/path/to/key.pem"
+
+# Бэкапы
+backup:
+  enabled: true
+  directory: "/var/backups/workernet"
+  retention_days: 7
+  
+  cron:
+    enabled: true
+    schedule: "0 2 * * *"  # Каждый день в 2:00
+
+# Мониторинг
+monitoring:
+  health_check: true
+  health_check_url: "/health"
+
+# Производительность
+performance:
+  enable_opcache: true
+  enable_redis_cache: true
+  
+  tuning:
+    postgresql:
+      shared_buffers: "256MB"
+      effective_cache_size: "1GB"
+      work_mem: "16MB"
+    
+    redis:
+      maxmemory: "2gb"
+      maxmemory_policy: "allkeys-lru"
+
+# Разработка
+development:
+  debug_mode: false
+  install_xdebug: false
+  mock_data: false
+
+# Rollback
+rollback:
+  enabled: true
+  remove_packages_on_rollback: false
+  create_restore_points: true
+
