@@ -32,6 +32,9 @@ sudo ./bootstrap.sh
 git clone https://github.com/apelsin349/WN_5.0_install.git
 cd WN_5.0_install
 
+# Установить права на выполнение
+chmod +x install.sh
+
 # Запустить установку
 sudo ./install.sh
 ```
