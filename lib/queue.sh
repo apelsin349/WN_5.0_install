@@ -51,22 +51,34 @@ install_rabbitmq_fallback() {
     
     # Установить Erlang из репозиториев Ubuntu/Debian
     log_info "Установка Erlang из стандартных репозиториев..."
-    if ! apt install -y erlang-base erlang-nox 2>&1 | tee -a "$LOG_FILE"; then
-        log_error "Не удалось установить Erlang"
-        return 1
+    
+    # Попробовать разные варианты установки Erlang
+    local erlang_packages="erlang-base erlang-nox"
+    if [ "$(get_os_type)" = "debian" ]; then
+        # Для Debian попробуем минимальный набор
+        erlang_packages="erlang-base"
+    fi
+    
+    if ! apt install -y $erlang_packages 2>&1 | tee -a "$LOG_FILE"; then
+        log_warn "⚠️  Не удалось установить полный набор Erlang, пробуем минимальный..."
+        if ! apt install -y erlang-base 2>&1 | tee -a "$LOG_FILE"; then
+            log_error "❌ Не удалось установить Erlang"
+            return 1
+        fi
     fi
     INSTALLED_PACKAGES+=("erlang-base")
     
     # Установить RabbitMQ из репозиториев Ubuntu/Debian
     log_info "Установка RabbitMQ из стандартных репозиториев..."
     if ! apt install -y rabbitmq-server 2>&1 | tee -a "$LOG_FILE"; then
-        log_error "Не удалось установить RabbitMQ"
+        log_error "❌ Не удалось установить RabbitMQ"
         return 1
     fi
     INSTALLED_PACKAGES+=("rabbitmq-server")
     
     log_warn "⚠️  RabbitMQ установлен из стандартных репозиториев (может быть старая версия)"
     log_info "   Функциональность WorkerNet не пострадает"
+    log_info "   Для получения последней версии настройте репозитории вручную"
     
     return 0
 }
@@ -80,11 +92,21 @@ install_rabbitmq_debian() {
     
     if [ "$(get_os_type)" = "debian" ]; then
         codename="bookworm"  # Debian 12
-        # Для Debian требуется OpenSSL 1.1
+        # Для Debian требуется OpenSSL 1.1, но используем актуальные репозитории
         if ! dpkg -l | grep -q "libssl1.1"; then
-            echo "deb http://archive.debian.org/debian-security buster/updates main" >> /etc/apt/sources.list
-            apt update
-            apt install -y gnupg libssl1.1
+            log_info "Установка OpenSSL 1.1 для Debian 12..."
+            # Используем актуальные репозитории вместо устаревших
+            if ! apt install -y libssl1.1 2>/dev/null; then
+                # Если libssl1.1 недоступен, попробуем libssl3
+                log_warn "libssl1.1 недоступен, пробуем libssl3..."
+                if ! apt install -y libssl3 2>/dev/null; then
+                    log_warn "Не удалось установить OpenSSL, продолжаем без него"
+                else
+                    log_info "Установлен libssl3"
+                fi
+            else
+                log_info "Установлен libssl1.1"
+            fi
         fi
     fi
     
@@ -131,9 +153,17 @@ EOF
     
     # Проверить доступность пакетов RabbitMQ
     if ! apt-cache show rabbitmq-server >/dev/null 2>&1; then
-        log_warn "⚠️  Пакеты RabbitMQ недоступны, используем fallback метод"
-        install_rabbitmq_fallback
-        return $?
+        log_warn "⚠️  Пакеты RabbitMQ недоступны в официальных репозиториях"
+        log_info "🔄 Попытка установки из стандартных репозиториев дистрибутива..."
+        
+        # Попытка установки из стандартных репозиториев
+        if apt-cache show rabbitmq-server >/dev/null 2>&1; then
+            log_info "✅ RabbitMQ доступен в стандартных репозиториях"
+        else
+            log_warn "⚠️  RabbitMQ недоступен, используем fallback метод"
+            install_rabbitmq_fallback
+            return $?
+        fi
     fi
     
     # Установить Erlang

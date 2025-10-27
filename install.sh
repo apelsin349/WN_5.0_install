@@ -46,6 +46,10 @@ while [[ $# -gt 0 ]]; do
             DOMAIN="$2"
             shift 2
             ;;
+        --config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
         --webserver)
             WEBSERVER="$2"
             shift 2
@@ -81,7 +85,7 @@ WorkerNet Installer v${SCRIPT_VERSION} - Улучшенная версия
 Использование: $0 [ОПЦИИ]
 
 Опции:
-  --config FILE              Использовать конфигурационный файл
+  --config FILE              Путь к конфигурационному YAML файлу
   --version VERSION          Указать версию WorkerNet (3.x, 4.x, 5.x)
   --domain DOMAIN            Указать домен (по умолчанию: _)
   --webserver SERVER         Выбрать веб-сервер (apache/nginx)
@@ -143,8 +147,29 @@ main() {
     fi
     
     # Загрузить конфигурацию (если указана) - ДО интерактивных запросов
-    load_config || exit 1
-    show_loaded_config
+    if [ -n "${CONFIG_FILE:-}" ]; then
+        if [ -f "$CONFIG_FILE" ]; then
+            log_info "Загрузка конфигурации из: $CONFIG_FILE"
+            
+            # Валидация конфигурации
+            if command -v validate_config &>/dev/null; then
+                if ! validate_config "$CONFIG_FILE"; then
+                    log_error "Конфигурация не прошла валидацию"
+                    exit 1
+                fi
+            fi
+            
+            # Загрузка конфигурации
+            if command -v load_config &>/dev/null; then
+                load_config "$CONFIG_FILE"
+            else
+                log_warn "Функция load_config недоступна, конфигурация не загружена"
+            fi
+        else
+            log_error "Конфигурационный файл не найден: $CONFIG_FILE"
+            exit 1
+        fi
+    fi
     
     # Выбор версии WorkerNet (если не задана в конфиге)
     setup_version || exit 1

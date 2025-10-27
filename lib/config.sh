@@ -2,6 +2,98 @@
 # config.sh - Загрузка конфигурации из YAML файла
 # WorkerNet Installer v5.0
 
+# Валидация конфигурации
+validate_config() {
+    local config_file="$1"
+    local errors=0
+    
+    log_info "Валидация конфигурации..."
+    
+    if [ ! -f "$config_file" ]; then
+        log_error "Конфигурационный файл не найден: $config_file"
+        return 1
+    fi
+    
+    # Проверка синтаксиса YAML (базовая)
+    if ! grep -q "^[a-zA-Z]" "$config_file"; then
+        log_error "Конфигурационный файл пуст или имеет неверный формат"
+        ((errors++))
+    fi
+    
+    # Проверка обязательных секций
+    local required_sections=("workernet" "database" "redis" "rabbitmq" "php" "webserver")
+    for section in "${required_sections[@]}"; do
+        if ! grep -q "^${section}:" "$config_file"; then
+            log_warn "Отсутствует секция: $section"
+            ((errors++))
+        fi
+    done
+    
+    # Проверка значений в секции workernet
+    if grep -q "^workernet:" "$config_file"; then
+        # Проверка версии
+        local version=$(grep -A 10 "^workernet:" "$config_file" | grep "version:" | awk '{print $2}' | tr -d '"')
+        if [ -n "$version" ]; then
+            if [[ ! "$version" =~ ^[3-5]\.x$ ]]; then
+                log_error "Неверная версия WorkerNet: $version (должна быть 3.x, 4.x или 5.x)"
+                ((errors++))
+            fi
+        fi
+        
+        # Проверка веб-сервера
+        local webserver=$(grep -A 10 "^workernet:" "$config_file" | grep "webserver:" | awk '{print $2}' | tr -d '"')
+        if [ -n "$webserver" ]; then
+            if [[ ! "$webserver" =~ ^(apache|nginx)$ ]]; then
+                log_error "Неверный веб-сервер: $webserver (должен быть apache или nginx)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    # Проверка значений в секции database
+    if grep -q "^database:" "$config_file"; then
+        local db_port=$(grep -A 10 "^database:" "$config_file" | grep "port:" | awk '{print $2}' | tr -d '"')
+        if [ -n "$db_port" ]; then
+            if [[ ! "$db_port" =~ ^[0-9]+$ ]] || [ "$db_port" -lt 1024 ] || [ "$db_port" -gt 65535 ]; then
+                log_error "Неверный порт базы данных: $db_port (должен быть 1024-65535)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    # Проверка значений в секции redis
+    if grep -q "^redis:" "$config_file"; then
+        local redis_port=$(grep -A 10 "^redis:" "$config_file" | grep "port:" | awk '{print $2}' | tr -d '"')
+        if [ -n "$redis_port" ]; then
+            if [[ ! "$redis_port" =~ ^[0-9]+$ ]] || [ "$redis_port" -lt 1024 ] || [ "$redis_port" -gt 65535 ]; then
+                log_error "Неверный порт Redis: $redis_port (должен быть 1024-65535)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    # Проверка значений в секции php
+    if grep -q "^php:" "$config_file"; then
+        local php_version=$(grep -A 10 "^php:" "$config_file" | grep "version:" | awk '{print $2}' | tr -d '"')
+        if [ -n "$php_version" ]; then
+            if [[ ! "$php_version" =~ ^8\.[0-9]+$ ]]; then
+                log_error "Неверная версия PHP: $php_version (должна быть 8.x)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    # Итоги валидации
+    if [ $errors -eq 0 ]; then
+        log_info "✅ Конфигурация валидна"
+        return 0
+    else
+        log_error "❌ Обнаружено $errors ошибок в конфигурации"
+        log_error "Исправьте ошибки и запустите установку снова"
+        return 1
+    fi
+}
+
 # Простой парсер YAML для конфигурационного файла
 parse_yaml_config() {
     local config_file="$1"
@@ -147,6 +239,7 @@ show_loaded_config() {
 }
 
 # Экспортировать функции
+export -f validate_config
 export -f parse_yaml_config
 export -f apply_config_fallbacks
 export -f load_config

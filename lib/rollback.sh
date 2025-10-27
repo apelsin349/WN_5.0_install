@@ -61,10 +61,16 @@ perform_rollback() {
     echo ""
     log_error "Система восстановлена в исходное состояние"
     log_error ""
-    log_error "Для отладки проблемы:"
-    log_error "  1. Проверьте логи: $INSTALL_LOG"
-    log_error "  2. Исправьте проблему"
-    log_error "  3. Запустите установку снова"
+    
+    # Показать диагностику ошибки если доступна
+    if command -v diagnose_error &>/dev/null && [ -n "${ROLLBACK_COMPONENT:-}" ]; then
+        diagnose_error "${ROLLBACK_COMPONENT}" "${ROLLBACK_ERROR:-Неизвестная ошибка}" "${exit_code:-1}"
+    else
+        log_error "Для отладки проблемы:"
+        log_error "  1. Проверьте логи: $INSTALL_LOG"
+        log_error "  2. Исправьте проблему"
+        log_error "  3. Запустите установку снова"
+    fi
     echo ""
     
     # Включить обратно unattended-upgrades (если был остановлен)

@@ -74,6 +74,90 @@ install_apache() {
     return 0
 }
 
+# Определить имя сервиса Apache
+get_apache_service_name() {
+    local os_type=$(get_os_type)
+    local service_name=""
+    
+    case $os_type in
+        ubuntu|debian)
+            service_name="apache2"
+            ;;
+        almalinux)
+            service_name="httpd"
+            ;;
+        *)
+            # Попробовать определить автоматически
+            if systemctl list-unit-files | grep -q "apache2.service"; then
+                service_name="apache2"
+            elif systemctl list-unit-files | grep -q "httpd.service"; then
+                service_name="httpd"
+            else
+                service_name="apache2"  # По умолчанию
+                log_warn "Не удалось определить имя сервиса Apache, используем apache2"
+            fi
+            ;;
+    esac
+    
+    log_debug "Определено имя сервиса Apache: $service_name"
+    echo "$service_name"
+}
+
+# Определить путь к PHP-FPM сокету
+get_php_fpm_socket() {
+    local os_type=$(get_os_type)
+    local php_socket=""
+    
+    # Попробовать определить путь автоматически
+    local possible_paths=()
+    
+    case $os_type in
+        ubuntu|debian)
+            possible_paths=(
+                "/run/php/php8.3-fpm.sock"
+                "/run/php/php8.2-fpm.sock"
+                "/run/php/php8.1-fpm.sock"
+                "/var/run/php/php8.3-fpm.sock"
+                "/var/run/php/php8.2-fpm.sock"
+            )
+            ;;
+        almalinux)
+            possible_paths=(
+                "/var/opt/remi/php83/run/php-fpm/www.sock"
+                "/var/opt/remi/php82/run/php-fpm/www.sock"
+                "/var/opt/remi/php81/run/php-fpm/www.sock"
+                "/run/php-fpm/www.sock"
+                "/var/run/php-fpm/www.sock"
+            )
+            ;;
+    esac
+    
+    # Проверить существующие сокеты
+    for path in "${possible_paths[@]}"; do
+        if [ -S "$path" ]; then
+            php_socket="unix:${path}|fcgi://localhost"
+            log_debug "Найден PHP-FPM сокет: $path"
+            break
+        fi
+    done
+    
+    # Если не найден, использовать путь по умолчанию
+    if [ -z "$php_socket" ]; then
+        case $os_type in
+            ubuntu|debian)
+                php_socket="unix:/run/php/php8.3-fpm.sock|fcgi://localhost"
+                log_warn "PHP-FPM сокет не найден, используем путь по умолчанию для Ubuntu/Debian"
+                ;;
+            almalinux)
+                php_socket="unix:/var/opt/remi/php83/run/php-fpm/www.sock|fcgi://localhost"
+                log_warn "PHP-FPM сокет не найден, используем путь по умолчанию для AlmaLinux"
+                ;;
+        esac
+    fi
+    
+    echo "$php_socket"
+}
+
 # Настройка Apache
 configure_apache() {
     log_info "Настройка Apache..."
@@ -93,13 +177,15 @@ configure_apache() {
     
     if [ "$os_type" = "almalinux" ]; then
         apache_conf="/etc/httpd/conf.d/workernet.conf"
-        php_socket="unix:/var/opt/remi/php83/run/php-fpm/www.sock|fcgi://localhost"
         log_dir="/var/log/httpd"
     else
         apache_conf="/etc/apache2/sites-available/workernet.conf"
-        php_socket="unix:/run/php/php8.3-fpm.sock|fcgi://localhost"
         log_dir="/var/log/apache2"
     fi
+    
+    # Автоматически определить путь к PHP-FPM сокету
+    php_socket=$(get_php_fpm_socket)
+    log_info "Используется PHP-FPM сокет: $php_socket"
     
     # Проверить существующий конфиг и спросить о перезаписи
     if [ -f "$apache_conf" ]; then
@@ -127,7 +213,7 @@ configure_apache() {
                 log_info "Используется существующий файл: $apache_conf"
                 
                 # Запустить Apache если он остановлен (важно при переустановке)
-                local apache_service=$([ "$os_type" = "almalinux" ] && echo "httpd" || echo "apache2")
+                local apache_service=$(get_apache_service_name)
                 if ! systemctl is-active --quiet "$apache_service" 2>/dev/null; then
                     log_info "Запуск $apache_service..."
                     systemctl start "$apache_service" 2>/dev/null || true
@@ -207,11 +293,7 @@ EOF
     CREATED_FILES+=("$docroot/index.php")
     
     # Перезапустить Apache
-    local apache_service="apache2"
-    if [ "$os_type" = "almalinux" ]; then
-        apache_service="httpd"
-    fi
-    
+    local apache_service=$(get_apache_service_name)
     run_cmd "systemctl restart $apache_service"
     
     ok "Apache настроен успешно"
@@ -275,11 +357,13 @@ configure_nginx() {
     
     if [ "$os_type" = "almalinux" ]; then
         nginx_conf="/etc/nginx/conf.d/workernet.conf"
-        php_socket="unix:/var/opt/remi/php83/run/php-fpm/www.sock"
     else
         nginx_conf="/etc/nginx/sites-available/workernet.conf"
-        php_socket="unix:/run/php/php8.3-fpm.sock"
     fi
+    
+    # Автоматически определить путь к PHP-FPM сокету
+    php_socket=$(get_php_fpm_socket | sed 's/|fcgi:\/\/localhost//')
+    log_info "Используется PHP-FPM сокет для NGINX: $php_socket"
     
     # Проверить существующий конфиг и спросить о перезаписи
     if [ -f "$nginx_conf" ]; then
@@ -462,6 +546,8 @@ setup_webserver() {
 }
 
 # Экспортировать функции
+export -f get_apache_service_name
+export -f get_php_fpm_socket
 export -f select_webserver
 export -f install_apache
 export -f configure_apache

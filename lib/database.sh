@@ -187,19 +187,29 @@ reinit_postgresql_cluster() {
         ubuntu|debian)
             # Ubuntu/Debian используют pg_createcluster
             if command_exists pg_createcluster; then
-                # Попытка создать кластер через pg_createcluster
-                # ПРИМЕЧАНИЕ: В Ubuntu 24.04 флаг --no-start может не поддерживаться
                 log_info "Создание кластера через pg_createcluster..."
                 
-                if pg_createcluster ${pg_version} main --port=5432 --locale=ru_RU.UTF-8 --encoding=UTF8 2>&1 | tee /tmp/pg_create.log | tail -10; then
+                # Проверить поддержку флага --no-start
+                local no_start_flag=""
+                if pg_createcluster --help 2>&1 | grep -q "no-start"; then
+                    no_start_flag="--no-start"
+                    log_debug "Флаг --no-start поддерживается"
+                else
+                    log_debug "Флаг --no-start не поддерживается, будет остановлен после создания"
+                fi
+                
+                # Создать кластер с учетом поддержки флага
+                if pg_createcluster ${pg_version} main --port=5432 --locale=ru_RU.UTF-8 --encoding=UTF8 $no_start_flag 2>&1 | tee /tmp/pg_create.log | tail -10; then
                     cluster_created=true
                     log_info "Кластер создан через pg_createcluster на порту 5432"
                     
-                    # Остановить если автоматически запустился
-                    if pg_lsclusters | grep "^${pg_version}.*main.*online" >/dev/null 2>&1; then
-                        log_info "Кластер автоматически запустился, останавливаем для проверки..."
-                        pg_ctlcluster ${pg_version} main stop 2>/dev/null || true
-                        sleep 2
+                    # Если флаг --no-start не поддерживался, остановить кластер
+                    if [ -z "$no_start_flag" ]; then
+                        if pg_lsclusters | grep "^${pg_version}.*main.*online" >/dev/null 2>&1; then
+                            log_info "Останавливаем кластер после создания (флаг --no-start не поддерживается)..."
+                            pg_ctlcluster ${pg_version} main stop 2>/dev/null || true
+                            sleep 2
+                        fi
                     fi
                 else
                     log_warn "Ошибка pg_createcluster (возможно --no-start не поддерживается), пробуем прямую инициализацию..."

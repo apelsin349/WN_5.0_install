@@ -235,6 +235,18 @@ configure_python() {
     # В Ubuntu 24.04 системный pip нельзя обновить без --break-system-packages
     log_info "Установка/обновление pip и virtualenv..."
     
+    # Определить версию Python и нужные флаги
+    local python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+    local pip_flags=""
+    
+    # Для Python 3.12+ в Ubuntu 24.04 нужен --break-system-packages
+    if [ "$os_type" = "ubuntu" ] && [ "$(get_os_version)" = "24" ]; then
+        if [ -n "$python_version" ] && [ "${python_version%%.*}" -ge 3 ] && [ "${python_version##*.}" -ge 12 ]; then
+            pip_flags="--break-system-packages"
+            log_debug "Используем --break-system-packages для Python $python_version в Ubuntu 24.04"
+        fi
+    fi
+    
     # Проверить версию pip
     local current_pip_version=$(python3 -m pip --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
     if [ -n "$current_pip_version" ] && [ "${current_pip_version%%.*}" -ge 24 ]; then
@@ -242,11 +254,17 @@ configure_python() {
     else
         log_info "Обновление pip (может занять до 2 минут)..."
         
-        # Обновление pip с таймаутом
-        if timeout 120 python3 -m pip install --upgrade pip --break-system-packages 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -5; then
+        # Обновление pip с правильными флагами
+        if timeout 120 python3 -m pip install --upgrade pip $pip_flags 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -5; then
             ok "pip обновлён успешно"
-        elif timeout 120 python3 -m pip install --upgrade pip --ignore-installed 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -5; then
-            ok "pip обновлён успешно"
+        elif [ -n "$pip_flags" ]; then
+            # Если с --break-system-packages не получилось, попробовать без него
+            log_warn "Повторная попытка обновления pip без --break-system-packages..."
+            if timeout 120 python3 -m pip install --upgrade pip --ignore-installed 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -5; then
+                ok "pip обновлён успешно"
+            else
+                log_warn "Не удалось обновить pip (используется системная версия)"
+            fi
         else
             log_warn "Не удалось обновить pip (используется системная версия)"
         fi
@@ -256,11 +274,17 @@ configure_python() {
     if ! python3 -m pip show virtualenv >/dev/null 2>&1; then
         log_info "Установка virtualenv (может занять до 2 минут)..."
         
-        # Установка virtualenv с таймаутом
-        if timeout 120 python3 -m pip install virtualenv --break-system-packages 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -10; then
+        # Установка virtualenv с правильными флагами
+        if timeout 120 python3 -m pip install virtualenv $pip_flags 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -10; then
             ok "virtualenv установлен успешно"
-        elif timeout 120 python3 -m pip install virtualenv --ignore-installed 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -10; then
-            ok "virtualenv установлен успешно"
+        elif [ -n "$pip_flags" ]; then
+            # Если с --break-system-packages не получилось, попробовать без него
+            log_warn "Повторная попытка установки virtualenv без --break-system-packages..."
+            if timeout 120 python3 -m pip install virtualenv --ignore-installed 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -10; then
+                ok "virtualenv установлен успешно"
+            else
+                log_warn "Не удалось установить virtualenv (может повлиять на poller)"
+            fi
         else
             log_warn "Не удалось установить virtualenv (может повлиять на poller)"
         fi

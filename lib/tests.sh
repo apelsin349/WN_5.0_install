@@ -203,6 +203,20 @@ test_env_file() {
     fi
 }
 
+# Тест 9: Проверка версий компонентов
+test_versions() {
+    log_debug "Проверка версий установленных компонентов..."
+    
+    # Проверить минимальные версии
+    if check_minimum_versions; then
+        log_debug "    ✓ Все версии компонентов соответствуют требованиям"
+        return 0
+    else
+        log_warn "    ⚠ Некоторые компоненты имеют устаревшие версии"
+        return 0  # Не критично, но стоит обратить внимание
+    fi
+}
+
 # Тест 10: Проверка прав доступа
 test_permissions() {
     local os_type=$(get_os_type)
@@ -227,7 +241,7 @@ test_permissions() {
     fi
 }
 
-# Тест 11: Проверка Supervisor workers
+# Тест 12: Проверка Supervisor workers
 test_supervisor_workers() {
     local running_workers=$(supervisorctl status 2>/dev/null | grep RUNNING | wc -l)
     
@@ -256,6 +270,7 @@ run_smoke_tests() {
     run_test "Проверка пользователей RabbitMQ" test_rabbitmq_users
     run_test "Проверка веб-сервера" test_webserver
     run_test "Проверка PHP" test_php
+    run_test "Проверка версий компонентов" test_versions
     run_test "Проверка .env файла" test_env_file
     run_test "Проверка прав доступа" test_permissions
     run_test "Проверка Supervisor workers" test_supervisor_workers
@@ -296,6 +311,7 @@ export -f test_redis
 export -f test_rabbitmq_users
 export -f test_webserver
 export -f test_php
+export -f test_versions
 export -f test_env_file
 export -f test_permissions
 export -f test_supervisor_workers

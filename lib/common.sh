@@ -192,6 +192,183 @@ export -f get_os_version
 export -f command_exists
 export -f is_service_active
 export -f database_exists
+# Проверить версию пакета
+check_package_version() {
+    local package=$1
+    local min_version=$2
+    local current_version=""
+    
+    case $(get_os_type) in
+        ubuntu|debian)
+            current_version=$(apt-cache policy "$package" 2>/dev/null | grep "Installed:" | awk '{print $2}' | head -1)
+            ;;
+        almalinux)
+            current_version=$(rpm -q --queryformat '%{VERSION}' "$package" 2>/dev/null || echo "")
+            ;;
+    esac
+    
+    if [ -z "$current_version" ]; then
+        log_debug "Пакет $package не установлен"
+        return 1
+    fi
+    
+    log_debug "Версия пакета $package: $current_version"
+    
+    # Простая проверка версии (можно улучшить)
+    if [ -n "$min_version" ]; then
+        if [ "$current_version" = "$min_version" ] || [ "$current_version" \> "$min_version" ]; then
+            log_debug "Версия $package ($current_version) >= $min_version"
+            return 0
+        else
+            log_warn "Версия $package ($current_version) < $min_version"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Диагностика ошибки
+diagnose_error() {
+    local component=$1
+    local error=$2
+    local exit_code=$3
+    
+    log_error "════════════════════════════════════════════════════════════════"
+    log_error "🔍 ДИАГНОСТИКА ОШИБКИ"
+    log_error "════════════════════════════════════════════════════════════════"
+    log_error "Компонент: $component"
+    log_error "Ошибка: $error"
+    log_error "Код выхода: $exit_code"
+    log_error ""
+    
+    # Общая диагностика системы
+    log_error "📊 СОСТОЯНИЕ СИСТЕМЫ:"
+    log_error "OS: $(get_os_type) $(get_os_version)"
+    log_error "RAM: $(free -h | awk '/Mem:/ {print $3 "/" $2}')"
+    log_error "Disk: $(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')"
+    log_error "Load: $(uptime | awk -F'load average:' '{print $2}')"
+    log_error ""
+    
+    # Диагностика по компонентам
+    case $component in
+        "postgresql"|"database")
+            log_error "🗄️ ДИАГНОСТИКА POSTGRESQL:"
+            log_error "Статус сервиса:"
+            systemctl status postgresql 2>&1 | head -10 || true
+            log_error ""
+            log_error "Порты:"
+            ss -tlnp | grep :5432 || log_error "  Порт 5432 не слушается"
+            log_error ""
+            log_error "Процессы:"
+            ps aux | grep postgres | head -5 || log_error "  Процессы PostgreSQL не найдены"
+            ;;
+        "redis"|"cache")
+            log_error "💾 ДИАГНОСТИКА REDIS:"
+            log_error "Статус сервиса:"
+            systemctl status redis 2>&1 | head -10 || true
+            log_error ""
+            log_error "Порты:"
+            ss -tlnp | grep :6379 || log_error "  Порт 6379 не слушается"
+            ;;
+        "rabbitmq"|"queue")
+            log_error "📨 ДИАГНОСТИКА RABBITMQ:"
+            log_error "Статус сервиса:"
+            systemctl status rabbitmq-server 2>&1 | head -10 || true
+            log_error ""
+            log_error "Порты:"
+            ss -tlnp | grep :5672 || log_error "  Порт 5672 не слушается"
+            ss -tlnp | grep :15672 || log_error "  Порт 15672 не слушается"
+            ;;
+        "php"|"backend")
+            log_error "⚙️ ДИАГНОСТИКА PHP:"
+            if command_exists php; then
+                log_error "Версия PHP: $(php -v | head -1)"
+                log_error "Расширения:"
+                php -m | grep -E "(pgsql|redis|curl|mbstring)" || log_error "  Критические расширения отсутствуют"
+            else
+                log_error "  PHP не установлен"
+            fi
+            ;;
+        "apache"|"nginx"|"webserver")
+            log_error "🌐 ДИАГНОСТИКА ВЕБ-СЕРВЕРА:"
+            if [ "$WEBSERVER" = "apache" ]; then
+                local apache_service=$(get_apache_service_name)
+                log_error "Статус Apache ($apache_service):"
+                systemctl status "$apache_service" 2>&1 | head -10 || true
+            else
+                log_error "Статус NGINX:"
+                systemctl status nginx 2>&1 | head -10 || true
+            fi
+            log_error ""
+            log_error "Порты:"
+            ss -tlnp | grep -E ":(80|443)" || log_error "  Порты 80/443 не слушаются"
+            ;;
+    esac
+    
+    log_error ""
+    log_error "🔧 РЕКОМЕНДАЦИИ:"
+    log_error "1. Проверьте логи: tail -f /var/log/workernet/install_*.log"
+    log_error "2. Проверьте свободное место: df -h"
+    log_error "3. Проверьте память: free -h"
+    log_error "4. Перезапустите установку: sudo ./install.sh --force"
+    log_error "════════════════════════════════════════════════════════════════"
+}
+
+# Проверить минимальные требования к версиям
+check_minimum_versions() {
+    log_info "Проверка минимальных версий компонентов..."
+    
+    local errors=0
+    
+    # PostgreSQL
+    if command_exists psql; then
+        local pg_version=$(psql --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        if [ -n "$pg_version" ]; then
+            if [ "${pg_version%%.*}" -ge 14 ]; then
+                log_debug "PostgreSQL $pg_version (требуется 14+)"
+            else
+                log_warn "PostgreSQL $pg_version (требуется 14+)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    # PHP
+    if command_exists php; then
+        local php_version=$(php -v 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        if [ -n "$php_version" ]; then
+            if [ "${php_version%%.*}" -ge 8 ]; then
+                log_debug "PHP $php_version (требуется 8+)"
+            else
+                log_warn "PHP $php_version (требуется 8+)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    # Python
+    if command_exists python3; then
+        local python_version=$(python3 --version 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        if [ -n "$python_version" ]; then
+            if [ "${python_version%%.*}" -ge 3 ]; then
+                log_debug "Python $python_version (требуется 3+)"
+            else
+                log_warn "Python $python_version (требуется 3+)"
+                ((errors++))
+            fi
+        fi
+    fi
+    
+    if [ $errors -eq 0 ]; then
+        log_debug "Все версии компонентов соответствуют требованиям"
+        return 0
+    else
+        log_warn "Обнаружены компоненты с устаревшими версиями"
+        return 1
+    fi
+}
+
 # Сохранить учётные данные в файл
 save_credentials() {
     local key="$1"
@@ -236,4 +413,7 @@ export -f save_install_state
 export -f load_install_state
 export -f print_logo
 export -f print_system_info
+export -f check_package_version
+export -f check_minimum_versions
+export -f diagnose_error
 
