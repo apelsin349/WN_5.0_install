@@ -3,31 +3,11 @@
 # WorkerNet Installer v5.0
 
 # Поддерживаемые версии WorkerNet
-declare -A SUPPORTED_VERSIONS=(
-    ["3.x"]="Стабильная версия (Legacy)"
-    ["4.x"]="Текущая стабильная (Рекомендуется)"
-    ["5.x"]="Новая версия с React + Go (В разработке)"
-)
-
-# Порядок версий для отображения
-VERSION_ORDER=("3.x" "4.x" "5.x")
-
+VERSIONS=("3.x" "4.x" "5.x")
+DESCRIPTIONS=("Стабильная версия (Legacy)" "Текущая стабильная (Рекомендуется)" "Новая версия с React + Go (В разработке)")
+FEATURES=("PHP 8.3, PostgreSQL 15-16, Python 3.8+, 14 модулей интеграции" "PHP 8.3, PostgreSQL 16, Python 3.9+, 11 модулей, улучшенный UI" "React+MUI frontend, Go microservices (опционально), современный стек")
 # Глобальная переменная выбранной версии
 WORKERNET_VERSION=""
-
-# Префикс модулей для каждой версии
-declare -A VERSION_MODULE_PREFIX=(
-    ["3.x"]="usm"
-    ["4.x"]="wnm"
-    ["5.x"]="wnm"
-)
-
-# Особенности каждой версии
-declare -A VERSION_FEATURES=(
-    ["3.x"]="PHP 8.3, PostgreSQL 15-16, Python 3.8+, 14 модулей интеграции"
-    ["4.x"]="PHP 8.3, PostgreSQL 16, Python 3.9+, 11 модулей, улучшенный UI"
-    ["5.x"]="React+MUI frontend, Go microservices (опционально), современный стек"
-)
 
 # Показать список версий
 show_versions() {
@@ -38,9 +18,10 @@ show_versions() {
     echo ""
     
     local counter=1
-    for version in "${VERSION_ORDER[@]}"; do
-        local description="${SUPPORTED_VERSIONS[$version]}"
-        local features="${VERSION_FEATURES[$version]}"
+    for i in "${!VERSIONS[@]}"; do
+        local version="${VERSIONS[$i]}"
+        local description="${DESCRIPTIONS[$i]}"
+        local features="${FEATURES[$i]}"
         
         print_color "$COLOR_CYAN" "  $counter) WorkerNet $version"
         print_color "$COLOR_YELLOW" "     $description"
@@ -58,8 +39,8 @@ select_version_interactive() {
     show_versions
     
     local version_names=()
-    for version in "${VERSION_ORDER[@]}"; do
-        version_names+=("$version - ${SUPPORTED_VERSIONS[$version]}")
+    for i in "${!VERSIONS[@]}"; do
+        version_names+=("${VERSIONS[$i]} - ${DESCRIPTIONS[$i]}")
     done
     
     log_info "Выберите версию для установки:"
@@ -68,13 +49,13 @@ select_version_interactive() {
     select choice in "${version_names[@]}" "Выход"; do
         case $REPLY in
             [1-3])
-                local selected_version="${VERSION_ORDER[$((REPLY-1))]}"
+                local selected_version="${VERSIONS[$((REPLY-1))]}"
                 WORKERNET_VERSION="$selected_version"
                 
                 echo ""
                 ok "Выбрана версия: WorkerNet $WORKERNET_VERSION"
-                log_info "Описание: ${SUPPORTED_VERSIONS[$WORKERNET_VERSION]}"
-                log_info "Возможности: ${VERSION_FEATURES[$WORKERNET_VERSION]}"
+                log_info "Описание: ${DESCRIPTIONS[$((REPLY-1))]}"
+                log_info "Возможности: ${FEATURES[$((REPLY-1))]}"
                 echo ""
                 
                 return 0
