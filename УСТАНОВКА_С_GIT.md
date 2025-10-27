@@ -24,8 +24,8 @@
 
 ```bash
 # 1. Клонировать репозиторий
-git clone https://github.com/workernet/portal.git
-cd portal
+git clone https://github.com/apelsin349/WN_5.0_install.git
+cd WN_5.0_install
 
 # 2. Запустить автоматическую установку
 chmod +x install.sh
@@ -80,8 +80,8 @@ sudo apt install -y git curl wget
 
 ```bash
 # Клонировать официальный репозиторий
-git clone https://github.com/workernet/portal.git
-cd portal
+git clone https://github.com/apelsin349/WN_5.0_install.git
+cd WN_5.0_install
 
 # Переключиться на стабильную ветку
 git checkout main
@@ -94,11 +94,11 @@ sudo ./install.sh
 
 ```bash
 # Клонировать ваш форк
-git clone https://github.com/ваш-username/portal.git
-cd portal
+git clone https://github.com/ваш-username/WN_5.0_install.git
+cd WN_5.0_install
 
 # Добавить upstream репозиторий
-git remote add upstream https://github.com/workernet/portal.git
+git remote add upstream https://github.com/apelsin349/WN_5.0_install.git
 
 # Синхронизировать с основным репозиторием
 git fetch upstream
@@ -113,8 +113,8 @@ sudo ./install.sh
 
 ```bash
 # Клонировать репозиторий
-git clone https://github.com/workernet/portal.git
-cd portal
+git clone https://github.com/apelsin349/WN_5.0_install.git
+cd WN_5.0_install
 
 # Посмотреть доступные теги
 git tag -l
@@ -130,11 +130,11 @@ sudo ./install.sh --version 5.0.0
 
 ```bash
 # Скачать архив релиза
-wget https://github.com/workernet/portal/archive/refs/tags/v5.0.0.tar.gz
+wget https://github.com/apelsin349/WN_5.0_install/archive/refs/tags/v5.0.0.tar.gz
 
 # Распаковать
 tar -xzf v5.0.0.tar.gz
-cd portal-5.0.0
+cd WN_5.0_install-5.0.0
 
 # Запустить установку
 sudo ./install.sh
@@ -620,8 +620,8 @@ sequenceDiagram
 ### Процесс установки
 
 - [ ] **Клонировать репозиторий**
-  - [ ] `git clone https://github.com/workernet/portal.git`
-  - [ ] `cd portal`
+  - [ ] `git clone https://github.com/apelsin349/WN_5.0_install.git`
+  - [ ] `cd WN_5.0_install`
 
 - [ ] **Выбрать ветку/тег**
   - [ ] `git checkout main` (стабильная)
@@ -696,7 +696,7 @@ sudo apt install -y git
 ```bash
 # Решение
 sudo chown -R $USER:$USER /var/www/
-git clone https://github.com/workernet/portal.git /var/www/workernet
+git clone https://github.com/apelsin349/WN_5.0_install.git /var/www/workernet
 ```
 
 **Проблема:** Конфликт портов
@@ -747,7 +747,7 @@ tail -f /var/log/redis/redis-server.log
 - 📧 **Email:** support@workernet.online
 - 📱 **Telegram:** @workernet_support
 - 📚 **Документация:** https://docs.workernet.online
-- 🐛 **Issues:** https://github.com/workernet/portal/issues
+- 🐛 **Issues:** https://github.com/apelsin349/WN_5.0_install/issues
 
 ### Полезные ссылки
 

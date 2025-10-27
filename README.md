@@ -29,8 +29,8 @@ sudo ./bootstrap.sh
 
 ```bash
 # Клонировать репозиторий
-git clone https://github.com/workernet/portal.git
-cd portal
+git clone https://github.com/apelsin349/WN_5.0_install.git
+cd WN_5.0_install
 
 # Запустить установку
 sudo ./install.sh
