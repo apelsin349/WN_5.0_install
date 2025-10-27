@@ -183,12 +183,6 @@ reinit_postgresql_cluster() {
     
     # КРИТИЧНО: Установить правильные переменные окружения для локали
     log_info "Настройка переменных окружения для локали..."
-    export LANG=ru_RU.UTF-8
-    export LANGUAGE=ru_RU:ru
-    export LC_ALL=ru_RU.UTF-8
-    export LC_CTYPE=ru_RU.UTF-8
-    export LC_COLLATE=ru_RU.UTF-8
-    export LC_MESSAGES=ru_RU.UTF-8
     
     # Проверить что локаль доступна
     if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
@@ -196,6 +190,17 @@ reinit_postgresql_cluster() {
         log_error "Установите локаль перед реинициализацией кластера"
         return 1
     fi
+    
+    # Установить переменные окружения глобально для всей функции
+    export LANG=ru_RU.UTF-8
+    export LANGUAGE=ru_RU:ru
+    export LC_ALL=ru_RU.UTF-8
+    export LC_CTYPE=ru_RU.UTF-8
+    export LC_COLLATE=ru_RU.UTF-8
+    export LC_MESSAGES=ru_RU.UTF-8
+    
+    # Проверить что переменные установлены
+    log_debug "Переменные локали: LANG=$LANG, LC_ALL=$LC_ALL, LC_CTYPE=$LC_CTYPE"
     
     local cluster_created=false
     
@@ -215,7 +220,7 @@ reinit_postgresql_cluster() {
                 fi
                 
                 # Создать кластер с учетом поддержки флага и правильными переменными окружения
-                if LANG=ru_RU.UTF-8 LC_ALL=ru_RU.UTF-8 pg_createcluster ${pg_version} main --port=5432 --locale=ru_RU.UTF-8 --encoding=UTF8 $no_start_flag 2>&1 | tee /tmp/pg_create.log | tail -10; then
+                if LANG=ru_RU.UTF-8 LC_ALL=ru_RU.UTF-8 LC_CTYPE=ru_RU.UTF-8 pg_createcluster ${pg_version} main --port=5432 --locale=ru_RU.UTF-8 --encoding=UTF8 $no_start_flag 2>&1 | tee /tmp/pg_create.log | tail -10; then
                     cluster_created=true
                     log_info "Кластер создан через pg_createcluster на порту 5432"
                     
@@ -243,7 +248,7 @@ reinit_postgresql_cluster() {
                 chmod 700 "$data_dir"
                 
                 # Прямая инициализация с правильными переменными окружения
-                sudo -u postgres env LANG=ru_RU.UTF-8 LC_ALL=ru_RU.UTF-8 /usr/lib/postgresql/${pg_version}/bin/initdb -D "$data_dir" \
+                sudo -u postgres env LANG=ru_RU.UTF-8 LC_ALL=ru_RU.UTF-8 LC_CTYPE=ru_RU.UTF-8 /usr/lib/postgresql/${pg_version}/bin/initdb -D "$data_dir" \
                     --locale=ru_RU.UTF-8 --encoding=UTF8 2>&1 | tail -10
             fi
             ;;
@@ -253,7 +258,7 @@ reinit_postgresql_cluster() {
             chmod 700 "$data_dir"
             
             # Прямая инициализация с правильными переменными окружения
-            sudo -u postgres env LANG=ru_RU.UTF-8 LC_ALL=ru_RU.UTF-8 /usr/pgsql-${pg_version}/bin/initdb -D "$data_dir" \
+            sudo -u postgres env LANG=ru_RU.UTF-8 LC_ALL=ru_RU.UTF-8 LC_CTYPE=ru_RU.UTF-8 /usr/pgsql-${pg_version}/bin/initdb -D "$data_dir" \
                 --locale=ru_RU.UTF-8 --encoding=UTF8 2>&1 | tail -10
             ;;
     esac
@@ -428,6 +433,68 @@ ensure_postgresql_locale() {
 configure_postgresql() {
     log_info "Настройка PostgreSQL..."
     
+    # КРИТИЧНО: Установить русскую локаль ПЕРЕД всеми операциями PostgreSQL
+    log_info "Проверка и установка русской локали..."
+    
+    # Проверить, нужна ли установка ru_RU.UTF-8 в системе
+    if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
+        log_warn "Локаль ru_RU.UTF-8 не установлена в системе, устанавливаем..."
+        
+        # Установить language-pack-ru (как в legacy)
+        if apt-cache show language-pack-ru &>/dev/null 2>&1; then
+            log_info "Установка language-pack-ru..."
+            if [ -n "${LOG_FILE:-}" ]; then
+                apt-get install -y language-pack-ru 2>&1 | tee -a "$LOG_FILE" | grep -v "^Get:\|^Fetched" | head -20
+            else
+                apt-get install -y language-pack-ru 2>&1 | grep -v "^Get:\|^Fetched" | head -20
+            fi
+        fi
+        
+        # Генерация локали
+        if command_exists locale-gen; then
+            log_info "Генерация локали ru_RU.UTF-8..."
+            if [ -n "${LOG_FILE:-}" ]; then
+                locale-gen ru_RU.UTF-8 2>&1 | tee -a "$LOG_FILE" | tail -3
+            else
+                locale-gen ru_RU.UTF-8 2>&1 | tail -3
+            fi
+        fi
+        
+        # Дополнительная проверка после установки
+        if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
+            log_warn "Локаль все еще недоступна, пробуем альтернативные методы..."
+            
+            # Попробовать dpkg-reconfigure locales
+            if command_exists dpkg-reconfigure; then
+                log_info "Переконфигурация локалей через dpkg-reconfigure..."
+                if [ -n "${LOG_FILE:-}" ]; then
+                    dpkg-reconfigure locales 2>&1 | tee -a "$LOG_FILE" | tail -5
+                else
+                    dpkg-reconfigure locales 2>&1 | tail -5
+                fi
+            fi
+            
+            # Финальная проверка
+            if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
+                log_error "❌ Не удалось установить локаль ru_RU.UTF-8!"
+                log_error "   Доступные локали:"
+                locale -a 2>/dev/null | grep -E "(ru|RU)" | head -5 || log_error "   Русские локали не найдены"
+                log_error ""
+                log_error "🔧 РЕШЕНИЕ:"
+                log_error "   1. Установите локаль вручную:"
+                log_error "      sudo apt-get install language-pack-ru"
+                log_error "      sudo locale-gen ru_RU.UTF-8"
+                log_error "   2. Или используйте существующую локаль"
+                log_error ""
+                return 1
+            fi
+        fi
+        
+        ok "Локаль ru_RU.UTF-8 установлена в системе"
+    else
+        ok "Локаль ru_RU.UTF-8 доступна в системе"
+    fi
+    
     # КРИТИЧНО: Убедиться что PostgreSQL запущен и готов!
     log_info "Проверка статуса PostgreSQL..."
     
@@ -580,65 +647,6 @@ configure_postgresql() {
     
     # КРИТИЧНО: ДО создания пользователя проверить и реинициализировать кластер!
     log_info "Проверка локали PostgreSQL кластера..."
-    
-    # Проверить, нужна ли установка ru_RU.UTF-8 в системе
-    if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
-        log_warn "Локаль ru_RU.UTF-8 не установлена в системе, устанавливаем..."
-        
-        # Установить language-pack-ru (как в legacy)
-        if apt-cache show language-pack-ru &>/dev/null 2>&1; then
-            log_info "Установка language-pack-ru..."
-            if [ -n "${LOG_FILE:-}" ]; then
-                apt-get install -y language-pack-ru 2>&1 | tee -a "$LOG_FILE" | grep -v "^Get:\|^Fetched" | head -20
-            else
-                apt-get install -y language-pack-ru 2>&1 | grep -v "^Get:\|^Fetched" | head -20
-            fi
-        fi
-        
-        # Генерация локали
-        if command_exists locale-gen; then
-            log_info "Генерация локали ru_RU.UTF-8..."
-            if [ -n "${LOG_FILE:-}" ]; then
-                locale-gen ru_RU.UTF-8 2>&1 | tee -a "$LOG_FILE" | tail -3
-            else
-                locale-gen ru_RU.UTF-8 2>&1 | tail -3
-            fi
-        fi
-        
-        # Дополнительная проверка после установки
-        if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
-            log_warn "Локаль все еще недоступна, пробуем альтернативные методы..."
-            
-            # Попробовать dpkg-reconfigure locales
-            if command_exists dpkg-reconfigure; then
-                log_info "Переконфигурация локалей через dpkg-reconfigure..."
-                if [ -n "${LOG_FILE:-}" ]; then
-                    dpkg-reconfigure locales 2>&1 | tee -a "$LOG_FILE" | tail -5
-                else
-                    dpkg-reconfigure locales 2>&1 | tail -5
-                fi
-            fi
-            
-            # Финальная проверка
-            if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
-                log_error "❌ Не удалось установить локаль ru_RU.UTF-8!"
-                log_error "   Доступные локали:"
-                locale -a 2>/dev/null | grep -E "(ru|RU)" | head -5 || log_error "   Русские локали не найдены"
-                log_error ""
-                log_error "🔧 РЕШЕНИЕ:"
-                log_error "   1. Установите локаль вручную:"
-                log_error "      sudo apt-get install language-pack-ru"
-                log_error "      sudo locale-gen ru_RU.UTF-8"
-                log_error "   2. Или используйте существующую локаль"
-                log_error ""
-                return 1
-            fi
-        fi
-        
-        ok "Локаль ru_RU.UTF-8 установлена в системе"
-    else
-        ok "Локаль ru_RU.UTF-8 доступна в системе"
-    fi
     
     # Проверить локаль кластера template1
     local cluster_locale=$(sudo -u postgres psql -tAc "SELECT datcollate FROM pg_database WHERE datname='template1'" 2>/dev/null | tr -d ' ')
