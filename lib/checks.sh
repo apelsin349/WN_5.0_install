@@ -529,6 +529,131 @@ run_preflight_checks() {
     fi
 }
 
+# ПАРАЛЛЕЛЬНАЯ ВЕРСИЯ ПРОВЕРОК (НОВАЯ ФУНКЦИЯ)
+run_preflight_checks_parallel() {
+    log_section "🔍 PRE-FLIGHT CHECKS (PARALLEL)"
+    
+    CHECK_ERRORS=0
+    CHECK_WARNINGS=0
+    
+    # КРИТИЧНО: Сначала остановить unattended-upgrades (если есть)
+    disable_unattended_upgrades
+    
+    log_info "Запуск проверок параллельно..."
+    
+    # Массивы для хранения PID процессов и результатов
+    local pids=()
+    local check_names=()
+    local check_results=()
+    
+    # Запустить независимые проверки параллельно
+    log_info "Запуск независимых проверок..."
+    
+    check_root &
+    pids+=($!)
+    check_names+=("root")
+    
+    check_os_version &
+    pids+=($!)
+    check_names+=("os_version")
+    
+    check_existing_installation &
+    pids+=($!)
+    check_names+=("existing_installation")
+    
+    check_disk_space &
+    pids+=($!)
+    check_names+=("disk_space")
+    
+    check_memory &
+    pids+=($!)
+    check_names+=("memory")
+    
+    check_cpu &
+    pids+=($!)
+    check_names+=("cpu")
+    
+    check_internet &
+    pids+=($!)
+    check_names+=("internet")
+    
+    check_repositories &
+    pids+=($!)
+    check_names+=("repositories")
+    
+    check_ports &
+    pids+=($!)
+    check_names+=("ports")
+    
+    check_locale &
+    pids+=($!)
+    check_names+=("locale")
+    
+    check_selinux &
+    pids+=($!)
+    check_names+=("selinux")
+    
+    # Показать прогресс ожидания
+    log_info "Ожидание завершения всех проверок..."
+    local total_checks=${#pids[@]}
+    local completed=0
+    
+    # Дождаться завершения всех проверок
+    for i in "${!pids[@]}"; do
+        local pid=${pids[$i]}
+        local check_name=${check_names[$i]}
+        
+        # Ждать завершения конкретного процесса
+        wait $pid
+        local exit_code=$?
+        
+        ((completed++))
+        local percent=$((completed * 100 / total_checks))
+        
+        # Показать прогресс
+        printf "\r  [%3d%%] Completed: %s" $percent "$check_name"
+        
+        # Сохранить результат
+        check_results+=($exit_code)
+        
+        # Обновить счетчики ошибок и предупреждений
+        if [ $exit_code -ne 0 ]; then
+            if [[ "$check_name" == "root" ]] || [[ "$check_name" == "os_version" ]] || [[ "$check_name" == "disk_space" ]]; then
+                ((CHECK_ERRORS++))
+            else
+                ((CHECK_WARNINGS++))
+            fi
+        fi
+    done
+    
+    echo ""
+    log_info "Все проверки завершены"
+    
+    # Итоги
+    echo ""
+    log_separator "-"
+    
+    if [ $CHECK_ERRORS -eq 0 ] && [ $CHECK_WARNINGS -eq 0 ]; then
+        ok "Все предварительные проверки пройдены успешно! (параллельно)"
+        log_separator "-"
+        echo ""
+        return 0
+    elif [ $CHECK_ERRORS -eq 0 ]; then
+        log_warn "Предварительные проверки завершены с $CHECK_WARNINGS предупреждением(-ями) (параллельно)"
+        log_info "Установка может продолжиться, но просмотрите предупреждения"
+        log_separator "-"
+        echo ""
+        return 0
+    else
+        log_error "Предварительные проверки не пройдены: $CHECK_ERRORS ошибок, $CHECK_WARNINGS предупреждений (параллельно)"
+        log_error ""
+        log_error "Исправьте ошибки выше и запустите установку снова"
+        log_separator "-"
+        echo ""
+        return 1
+    fi
+}
+
 # Экспортировать функции
 export -f get_process_on_port
 export -f stop_conflicting_services
@@ -546,4 +671,5 @@ export -f check_os_version
 export -f check_selinux
 export -f check_existing_installation
 export -f run_preflight_checks
+export -f run_preflight_checks_parallel
 

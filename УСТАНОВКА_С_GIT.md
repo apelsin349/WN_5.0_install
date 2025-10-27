@@ -71,7 +71,7 @@ git --version
 
 # Если Git не установлен
 sudo apt update
-sudo apt install -y git curl wget
+sudo apt install -y git curl
 ```
 
 ---
@@ -132,7 +132,7 @@ sudo ./install.sh --version 5.0.0
 
 ```bash
 # Скачать архив релиза
-wget https://github.com/apelsin349/WN_5.0_install/archive/refs/tags/v5.0.0.tar.gz
+curl -L -O https://github.com/apelsin349/WN_5.0_install/archive/refs/tags/v5.0.0.tar.gz
 
 # Распаковать
 tar -xzf v5.0.0.tar.gz

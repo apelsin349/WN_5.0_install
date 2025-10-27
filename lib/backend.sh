@@ -83,7 +83,7 @@ install_php_debian() {
     
     # Добавить репозиторий Sury
     if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ]; then
-        wget -O /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.su/php/apt.gpg
+        curl -fsSL -o /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.su/php/apt.gpg
         echo "deb https://packages.sury.su/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
     fi
     

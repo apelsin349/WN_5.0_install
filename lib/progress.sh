@@ -225,47 +225,84 @@ download_with_progress() {
             fi
         done
         echo ""
-    elif command_exists wget; then
-        wget --progress=bar:force -O "$output" "$url" 2>&1 | \
+    elif command_exists curl; then
+        curl -L --progress-bar -o "$output" "$url" 2>&1 | \
         grep --line-buffered "%" | \
         sed -u -e "s,\.,,g" | \
         awk '{printf("\r  Прогресс: %s", $2)}'
         echo ""
     else
-        log_error "Neither curl nor wget found"
+        log_error "curl not found"
         return 1
     fi
 }
 
-# Прогресс для пакетной установки
+# Прогресс для пакетной установки (ПАРАЛЛЕЛЬНАЯ ВЕРСИЯ)
 package_install_progress() {
     local package_manager=$1
     shift
     local packages=("$@")
     local total=${#packages[@]}
-    local current=0
     
-    log_info "Installing $total packages..."
+    log_info "Installing $total packages in parallel..."
     
-    for package in "${packages[@]}"; do
-        ((current++))
-        local percent=$((current * 100 / total))
-        printf "\r  [%3d%%] Installing: %-30s" $percent "$package"
-        
-        case $package_manager in
-            apt)
-                apt install -y "$package" &> /dev/null
-                ;;
-            dnf)
-                dnf install -y "$package" &> /dev/null
-                ;;
-        esac
-        
-        INSTALLED_PACKAGES+=("$package")
-    done
+    # Показать прогресс-бар
+    printf "  [  0%%] Installing packages...\r"
     
-    echo ""
-    ok "Все пакеты установлены"
+    case $package_manager in
+        apt)
+            # ПАРАЛЛЕЛЬНАЯ УСТАНОВКА: все пакеты сразу
+            if apt install -y "${packages[@]}" 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | \
+               while IFS= read -r line; do
+                   # Ищем строки с прогрессом установки
+                   if [[ $line =~ ([0-9]+)% ]]; then
+                       local percent="${BASH_REMATCH[1]}"
+                       printf "\r  [%3s%%] Installing packages..." "$percent"
+                   elif [[ $line =~ "Setting up" ]] || [[ $line =~ "Configuring" ]]; then
+                       printf "\r  [ 90%%] Configuring packages...\r"
+                   fi
+               done; then
+                printf "\r  [100%%] All packages installed successfully\n"
+                ok "Все пакеты установлены параллельно"
+                
+                # Добавить все пакеты в список установленных
+                INSTALLED_PACKAGES+=("${packages[@]}")
+                return 0
+            else
+                printf "\r  [ERROR] Package installation failed\n"
+                log_error "Не удалось установить пакеты параллельно"
+                return 1
+            fi
+            ;;
+        dnf)
+            # ПАРАЛЛЕЛЬНАЯ УСТАНОВКА: все пакеты сразу
+            if dnf install -y "${packages[@]}" 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | \
+               while IFS= read -r line; do
+                   # Ищем строки с прогрессом установки
+                   if [[ $line =~ ([0-9]+)% ]]; then
+                       local percent="${BASH_REMATCH[1]}"
+                       printf "\r  [%3s%%] Installing packages..." "$percent"
+                   elif [[ $line =~ "Installing" ]] || [[ $line =~ "Updating" ]]; then
+                       printf "\r  [ 90%%] Installing packages...\r"
+                   fi
+               done; then
+                printf "\r  [100%%] All packages installed successfully\n"
+                ok "Все пакеты установлены параллельно"
+                
+                # Добавить все пакеты в список установленных
+                INSTALLED_PACKAGES+=("${packages[@]}")
+                return 0
+            else
+                printf "\r  [ERROR] Package installation failed\n"
+                log_error "Не удалось установить пакеты параллельно"
+                return 1
+            fi
+            ;;
+        *)
+            log_error "Неподдерживаемый менеджер пакетов: $package_manager"
+            return 1
+            ;;
+    esac
 }
 
 # Экспортировать функции
