@@ -245,12 +245,20 @@ reinit_postgresql_cluster() {
     # Реинициализировать кластер с ru_RU.UTF-8
     log_info "Инициализация нового кластера с локалью ru_RU.UTF-8..."
     
-    # Проверить что локаль доступна (переменные окружения уже установлены глобально)
+    # Проверить что локаль доступна
     if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
         log_error "Локаль ru_RU.UTF-8 недоступна в системе!"
         log_error "Установите локаль перед реинициализацией кластера"
         return 1
     fi
+    
+    # Установить переменные окружения для локали (необходимо для команд PostgreSQL)
+    export LANG=ru_RU.UTF-8
+    export LANGUAGE=ru_RU:ru
+    export LC_ALL=ru_RU.UTF-8
+    export LC_CTYPE=ru_RU.UTF-8
+    export LC_COLLATE=ru_RU.UTF-8
+    export LC_MESSAGES=ru_RU.UTF-8
     
     # Проверить что переменные установлены
     log_debug "Переменные локали: LANG=$LANG, LC_ALL=$LC_ALL, LC_CTYPE=$LC_CTYPE"
