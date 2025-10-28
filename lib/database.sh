@@ -35,10 +35,10 @@ ensure_russian_locale() {
         if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
             log_warn "Локаль все еще недоступна, пробуем альтернативные методы..."
             
-            # Попробовать dpkg-reconfigure locales
+            # Попробовать dpkg-reconfigure locales (неинтерактивно)
             if command_exists dpkg-reconfigure; then
-                log_info "Переконфигурация локалей через dpkg-reconfigure..."
-                dpkg-reconfigure locales 2>&1 | tail -5
+                log_info "Переконфигурация локалей через dpkg-reconfigure (неинтерактивно)..."
+                DEBIAN_FRONTEND=noninteractive dpkg-reconfigure locales 2>&1 | tail -5
             fi
             
             # Финальная проверка
@@ -469,9 +469,9 @@ ensure_postgresql_locale() {
         
         # Дополнительная проверка после установки
         if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
-            # Если локаль все еще недоступна, попробовать альтернативные методы
+            # Если локаль все еще недоступна, попробовать альтернативные методы (неинтерактивно)
             if command_exists dpkg-reconfigure; then
-                dpkg-reconfigure locales &>/dev/null 2>&1 || true
+                DEBIAN_FRONTEND=noninteractive dpkg-reconfigure locales &>/dev/null 2>&1 || true
             fi
         fi
     fi
