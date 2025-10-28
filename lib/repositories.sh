@@ -108,31 +108,9 @@ setup_debian_repositories() {
         log_debug "Репозиторий Sury уже добавлен"
     fi
     
-    # 3. RabbitMQ репозиторий (опционально, может использовать fallback)
-    if ! apt-cache policy 2>/dev/null | grep -q "rabbitmq"; then
-        log_info "Попытка добавления репозитория RabbitMQ (необязательно)..."
-        
-        # Попробовать добавить, но не критично если не получится
-        if curl -1sLf 'https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA' 2>/dev/null | \
-           gpg --dearmor -o /usr/share/keyrings/com.rabbitmq.team.gpg 2>/dev/null; then
-            
-            cat > /etc/apt/sources.list.d/rabbitmq.list << RABBITMQ
-## Provides modern Erlang/OTP releases
-deb [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-erlang/deb/${os_codename} main
-deb-src [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-erlang/deb/${os_codename} main
-
-## Provides RabbitMQ
-deb [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-server/deb/${os_codename} main
-deb-src [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-server/deb/${os_codename} main
-RABBITMQ
-            log_debug "Репозиторий RabbitMQ добавлен"
-            repos_added=true
-        else
-            log_debug "Репозиторий RabbitMQ недоступен, будет использован fallback"
-        fi
-    else
-        log_debug "Репозиторий RabbitMQ уже добавлен"
-    fi
+    # 3. RabbitMQ репозиторий (пропускаем, используется fallback в lib/queue.sh)
+    # RabbitMQ будет установлен позже через lib/queue.sh с правильной настройкой репозитория
+    log_debug "Репозиторий RabbitMQ будет настроен в lib/queue.sh (если необходимо)"
     
     # Один apt update для всех репозиториев
     if [ "$repos_added" = true ]; then
