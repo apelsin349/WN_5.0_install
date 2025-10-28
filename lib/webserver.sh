@@ -48,6 +48,13 @@ install_apache() {
     
     case $os_type in
         ubuntu|debian)
+            # Проверить и удалить конфликтующие пакеты
+            if dpkg -l | grep -q "^ii.*nginx"; then
+                log_info "Обнаружен NGINX, удаляем для установки Apache..."
+                apt-get remove -y nginx nginx-common nginx-core >/dev/null 2>&1 || true
+                log_debug "NGINX удалён"
+            fi
+            
             timed_run "Установка Apache2" \
                 "apt install -y apache2"
             INSTALLED_PACKAGES+=("apache2")
@@ -325,8 +332,18 @@ install_nginx() {
     
     case $os_type in
         ubuntu|debian)
-            # Удалить apache2 если был установлен
-            apt remove -y nginx-common apache2 2>/dev/null || true
+            # Проверить и удалить конфликтующие пакеты
+            if dpkg -l | grep -q "^ii.*apache2"; then
+                log_info "Обнаружен Apache2, удаляем для установки NGINX..."
+                apt-get remove -y apache2 apache2-bin apache2-data >/dev/null 2>&1 || true
+                log_debug "Apache2 удалён"
+            fi
+            
+            if dpkg -l | grep -q "^ii.*nginx-common"; then
+                log_debug "Обнаружен nginx-common, очищаем..."
+                apt-get remove -y nginx-common >/dev/null 2>&1 || true
+            fi
+            
             run_cmd "apt update"
             
             timed_run "Установка NGINX" \
