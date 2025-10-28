@@ -82,7 +82,17 @@ install_php_debian() {
     fi
     
     # Добавить репозиторий Sury (обязательно для Debian!)
+    # Проверить наличие файлов И что репозиторий действительно в apt cache
+    local need_repo=false
     if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ] || [ ! -f /etc/apt/sources.list.d/php.list ]; then
+        need_repo=true
+    elif ! apt-cache policy | grep -q "packages.sury.org/php"; then
+        # Файлы есть, но репозиторий не в кэше apt - нужно обновить
+        log_warn "Репозиторий Sury присутствует в файлах, но не в кэше apt. Обновляем..."
+        need_repo=true
+    fi
+    
+    if [ "$need_repo" = true ]; then
         log_info "Добавление репозитория Sury для PHP 8.3..."
         
         # Дополнительная проверка блокировки перед добавлением репозитория
