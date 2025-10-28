@@ -33,7 +33,7 @@
 ### Исполняемые скрипты
 
 ```
-improved/
+WN_5.0_install/
 ├── install.sh              ✅ 218 строк - Главный скрипт
 ├── bootstrap.sh            ✅ 155 строк - ⭐ НОВОЕ - Bootstrap для удаленной установки
 └── localize_all.sh         ✅ 100 строк - Скрипт локализации
@@ -63,7 +63,7 @@ lib/
 ### Конфигурация
 
 ```
-improved/
+WN_5.0_install/
 ├── install.conf.example.yml ✅ 200 строк - Пример конфигурации
 └── install.conf.yml         ✅ 200 строк - Рабочая конфигурация
 ```
@@ -71,7 +71,7 @@ improved/
 ### Документация
 
 ```
-improved/
+WN_5.0_install/
 ├── README.md                ✅ 15 KB - Полное руководство
 ├── БЫСТРЫЙ_СТАРТ.md         ✅ 4 KB - Быстрый старт
 ├── ВЕРСИИ.md                ✅ 10 KB - Система версий
@@ -99,7 +99,7 @@ improved/
 **bootstrap.sh** - скрипт для удаленной установки **одной командой**:
 
 ```bash
-curl -O http://workernet.online/improved/bootstrap.sh && \
+curl -O http://workernet.online/WN_5.0_install/bootstrap.sh && \
 chmod +x bootstrap.sh && \
 sudo ./bootstrap.sh
 ```
@@ -118,14 +118,14 @@ sudo ./bootstrap.sh
 
 ❌ **Было:**
 ```bash
-curl -O http://workernet.online/improved/install.sh
+curl -O http://workernet.online/WN_5.0_install/install.sh
 ./install.sh
 # ❌ ERROR: //lib/common.sh: No such file or directory
 ```
 
 ✅ **Стало:**
 ```bash
-curl -O http://workernet.online/improved/bootstrap.sh && chmod +x bootstrap.sh && sudo ./bootstrap.sh
+curl -O http://workernet.online/WN_5.0_install/bootstrap.sh && chmod +x bootstrap.sh && sudo ./bootstrap.sh
 # ✅ Скачивает все 14 файлов автоматически
 # ✅ Создает правильную структуру
 # ✅ Предлагает запустить установку
@@ -252,12 +252,12 @@ Smoke tests:              11
 
 ```bash
 # Удаленная установка (рекомендуется)
-curl -O http://workernet.online/improved/bootstrap.sh && \
+curl -O http://workernet.online/WN_5.0_install/bootstrap.sh && \
 chmod +x bootstrap.sh && \
 sudo ./bootstrap.sh
 
 # Локальная установка
-cd /path/to/improved/
+cd /path/to/WN_5.0_install/
 sudo ./install.sh
 
 # С выбором версии
@@ -312,7 +312,7 @@ sudo ./install.sh --version 4.10
 
 ```bash
 # Установка одной командой
-curl -O http://workernet.online/improved/bootstrap.sh && \
+curl -O http://workernet.online/WN_5.0_install/bootstrap.sh && \
 chmod +x bootstrap.sh && \
 sudo ./bootstrap.sh
 ```

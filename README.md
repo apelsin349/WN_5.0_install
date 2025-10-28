@@ -9,7 +9,7 @@
 ### Одной командой через bootstrap:
 
 ```bash
-curl -O http://workernet.online/improved/bootstrap.sh && \
+curl -O http://workernet.online/WN_5.0_install/bootstrap.sh && \
 chmod +x bootstrap.sh && \
 sudo ./bootstrap.sh
 ```
@@ -83,7 +83,7 @@ sudo ./install.sh
 ## 📂 СТРУКТУРА
 
 ```
-improved/
+WN_5.0_install/
 ├── README.md                  # Этот файл
 ├── install.sh                 # Главный установочный скрипт
 ├── install.conf.yml           # Конфигурационный файл (опционально)
@@ -109,7 +109,7 @@ improved/
 ### Быстрый старт
 
 ```bash
-cd /Volumes/DATA/Проекты/WN\ 5.0/инсталятор/improved/
+cd /Volumes/DATA/Проекты/WN_5.0_install/WN_5.0_install/
 chmod +x install.sh
 sudo ./install.sh
 ```
@@ -326,7 +326,7 @@ ls -la /var/log/workernet/restore_point_*.json
 
 ```bash
 # Если автоматический rollback не сработал
-cd improved/
+cd WN_5.0_install/
 source lib/common.sh
 source lib/logging.sh
 source lib/rollback.sh
@@ -370,7 +370,7 @@ perform_rollback 1
 
 ```bash
 # Unit тесты библиотек
-cd improved/
+cd WN_5.0_install/
 bash tests/test_common.sh
 bash tests/test_logging.sh
 bash tests/test_checks.sh
