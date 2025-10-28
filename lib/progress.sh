@@ -162,45 +162,18 @@ show_installation_summary() {
         echo ""
         log_info "1. Откройте WorkerNet в браузере:"
         log_info "   http://$(hostname -I | awk '{print $1}')/"
+        echo " Реквизиты по умолчанию: admin / 1234"
         echo ""
-        
+
         # Проверить наличие файла учётных данных
         if [ -f "${CREDENTIALS_FILE:-/var/log/workernet/install_credentials.env}" ]; then
             log_info "2. Учётные данные установки сохранены в:"
             log_info "   ${CREDENTIALS_FILE:-/var/log/workernet/install_credentials.env}"
             log_info "   (безопасно, доступен только root)"
             echo ""
-            log_info "3. Для обновления WebSocket реквизитов (если нужно):"
             
-            # Определить директорию установщика
-            if [ -n "${SCRIPT_DIR:-}" ] && [ -f "${SCRIPT_DIR}/update_credentials.sh" ]; then
-                log_info "   cd $SCRIPT_DIR"
-            elif [ -f "$(pwd)/update_credentials.sh" ]; then
-                log_info "   cd $(pwd)"
-            else
-                log_info "   cd [директория_где_запустили_install.sh]"
-            fi
-            
-            log_info "   sudo ./update_credentials.sh  # Без параметров (использует файл)"
-            log_info "   # ИЛИ с параметрами:"
-            log_info "   sudo ./update_credentials.sh workernet-stomp [пароль]"
-        else
-            log_info "2. После первого запуска (создания таблиц) обновите WebSocket реквизиты:"
-            
-            # Определить директорию установщика
-            if [ -n "${SCRIPT_DIR:-}" ] && [ -f "${SCRIPT_DIR}/update_credentials.sh" ]; then
-                log_info "   cd $SCRIPT_DIR"
-            elif [ -f "$(pwd)/update_credentials.sh" ]; then
-                log_info "   cd $(pwd)"
-            else
-                log_info "   cd [директория_где_запустили_install.sh]"
-            fi
-            
-            log_info "   sudo ./update_credentials.sh workernet-stomp [пароль_из_лога]"
         fi
         
-        echo ""
-        log_info "📖 Подробная инструкция: ПОСЛЕ_УСТАНОВКИ.md"
         echo ""
         log_separator "="
     fi
