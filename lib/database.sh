@@ -19,13 +19,30 @@ ensure_russian_locale() {
     if ! locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
         log_warn "Локаль ru_RU.UTF-8 не установлена в системе, устанавливаем..."
         
-        # Установить language-pack-ru
-        if apt-cache show language-pack-ru &>/dev/null 2>&1; then
-            log_info "Установка language-pack-ru..."
-            apt-get install -y language-pack-ru 2>&1 | grep -v "^Get:\|^Fetched" | head -20
+        local os_type=$(get_os_type)
+        
+        # Для Ubuntu: установить language-pack-ru
+        if [ "$os_type" = "ubuntu" ]; then
+            if apt-cache show language-pack-ru &>/dev/null 2>&1; then
+                log_info "Установка language-pack-ru..."
+                apt-get install -y language-pack-ru 2>&1 | grep -v "^Get:\|^Fetched" | head -20
+            fi
         fi
         
-        # Генерация локали
+        # Для Debian: добавить локаль в /etc/locale.gen
+        if [ "$os_type" = "debian" ]; then
+            log_info "Добавление ru_RU.UTF-8 в /etc/locale.gen..."
+            if ! grep -q "^ru_RU.UTF-8 UTF-8" /etc/locale.gen 2>/dev/null; then
+                # Раскомментировать или добавить строку
+                if grep -q "^# ru_RU.UTF-8 UTF-8" /etc/locale.gen 2>/dev/null; then
+                    sed -i 's/^# ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
+                else
+                    echo "ru_RU.UTF-8 UTF-8" >> /etc/locale.gen
+                fi
+            fi
+        fi
+        
+        # Генерация локали (для всех ОС)
         if command_exists locale-gen; then
             log_info "Генерация локали ru_RU.UTF-8..."
             locale-gen ru_RU.UTF-8 2>&1 | tail -3
@@ -48,10 +65,12 @@ ensure_russian_locale() {
                 locale -a 2>/dev/null | grep -E "(ru|RU)" | head -5 || log_error "   Русские локали не найдены"
                 log_error ""
                 log_error "🔧 РЕШЕНИЕ:"
-                log_error "   1. Установите локаль вручную:"
+                log_error "   Debian:"
+                log_error "      sudo sed -i 's/^# ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen"
+                log_error "      sudo locale-gen"
+                log_error "   Ubuntu:"
                 log_error "      sudo apt-get install language-pack-ru"
                 log_error "      sudo locale-gen ru_RU.UTF-8"
-                log_error "   2. Или используйте существующую локаль"
                 log_error ""
                 return 1
             fi
