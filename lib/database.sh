@@ -134,13 +134,21 @@ install_postgresql_debian() {
              sh -c 'echo \"deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt \$(lsb_release -cs)-pgdg main\" > /etc/apt/sources.list.d/pgdg.list'"
     fi
     
-    # Обновить списки пакетов
+    # Обновить списки пакетов через smart_apt_update
     log_info "⏱️  Starting: Обновление списков пакетов"
-    if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | grep -v "^WARNING:" | tail -10; then
-        ok "Обновление списков пакетов"
+    if command -v smart_apt_update &>/dev/null; then
+        smart_apt_update || {
+            log_error "Не удалось обновить списки пакетов"
+            return 1
+        }
     else
-        log_error "Не удалось обновить списки пакетов"
-        return 1
+        # Fallback если smart_apt_update недоступен
+        if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | grep -v "^WARNING:" | tail -10; then
+            ok "Обновление списков пакетов"
+        else
+            log_error "Не удалось обновить списки пакетов"
+            return 1
+        fi
     fi
     
     # Установить PostgreSQL 16

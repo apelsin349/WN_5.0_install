@@ -137,28 +137,37 @@ install_php_debian() {
             fi
         fi
         
-        # Обновить списки пакетов
+        # Обновить списки пакетов через smart_apt_update
         log_info "Обновление списков пакетов (может занять время)..."
-        local update_retries=0
-        local update_success=false
-        
-        while [ $update_retries -lt 3 ]; do
-            if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | grep -v "^WARNING:" | tail -10; then
-                update_success=true
-                break
-            else
-                update_retries=$((update_retries + 1))
-                if [ $update_retries -lt 3 ]; then
-                    log_warn "apt update не удался, попытка $update_retries/3. Ожидаем 10 секунд..."
-                    sleep 10
+        if command -v smart_apt_update &>/dev/null; then
+            smart_apt_update || {
+                log_error "Не удалось обновить списки пакетов"
+                log_error "Проверьте сетевое подключение и доступность репозитория Sury"
+                return 1
+            }
+        else
+            # Fallback: ручное обновление если smart_apt_update недоступен
+            local update_retries=0
+            local update_success=false
+            
+            while [ $update_retries -lt 3 ]; do
+                if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | grep -v "^WARNING:" | tail -10; then
+                    update_success=true
+                    break
+                else
+                    update_retries=$((update_retries + 1))
+                    if [ $update_retries -lt 3 ]; then
+                        log_warn "apt update не удался, попытка $update_retries/3. Ожидаем 10 секунд..."
+                        sleep 10
+                    fi
                 fi
+            done
+            
+            if [ "$update_success" = false ]; then
+                log_error "Не удалось обновить списки пакетов после 3 попыток"
+                log_error "Проверьте сетевое подключение и доступность репозитория Sury"
+                return 1
             fi
-        done
-        
-        if [ "$update_success" = false ]; then
-            log_error "Не удалось обновить списки пакетов после 3 попыток"
-            log_error "Проверьте сетевое подключение и доступность репозитория Sury"
-            return 1
         fi
         
         ok "Репозиторий Sury добавлен успешно"

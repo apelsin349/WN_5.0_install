@@ -4,7 +4,7 @@
 
 # Константы
 readonly SCRIPT_VERSION="5.0"
-readonly MIN_DISK_GB=20
+readonly MIN_DISK_GB=10
 readonly MIN_RAM_GB=2
 readonly MIN_CPU_CORES=2
 
@@ -416,4 +416,153 @@ export -f print_system_info
 export -f check_package_version
 export -f check_minimum_versions
 export -f diagnose_error
+
+# ============================================================================
+# DEBIAN ОПТИМИЗАЦИИ
+# ============================================================================
+
+# Глобальная переменная для отслеживания apt update
+APT_UPDATED=false
+
+# Умная функция apt update (выполняется только раз за установку)
+smart_apt_update() {
+    if [ "$APT_UPDATED" = true ]; then
+        log_debug "apt update уже выполнен, пропускаем"
+        return 0
+    fi
+    
+    log_info "Обновление списков пакетов apt..."
+    
+    # Проверка блокировки apt
+    if fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+        if command -v wait_for_apt_lock &>/dev/null; then
+            wait_for_apt_lock || return 1
+        else
+            log_warn "apt занят, ожидаем 10 секунд..."
+            sleep 10
+        fi
+    fi
+    
+    # Retry механизм (3 попытки)
+    local retries=0
+    while [ $retries -lt 3 ]; do
+        if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | \
+           grep -v "^WARNING:" | tail -10; then
+            APT_UPDATED=true
+            ok "Списки пакетов обновлены"
+            return 0
+        fi
+        retries=$((retries + 1))
+        if [ $retries -lt 3 ]; then
+            log_warn "apt update не удался, попытка $retries/3. Ожидаем 10 секунд..."
+            sleep 10
+        fi
+    done
+    
+    log_error "Не удалось обновить apt после 3 попыток"
+    return 1
+}
+
+# Сброс флага apt update (для тестов или принудительного обновления)
+reset_apt_cache() {
+    APT_UPDATED=false
+    log_debug "Флаг apt update сброшен"
+}
+
+# Установка общих зависимостей для Debian/Ubuntu
+install_common_dependencies_debian() {
+    log_info "Установка общих зависимостей для Debian/Ubuntu..."
+    
+    local common_deps=(
+        "curl"                      # Для загрузки файлов
+        "wget"                      # Fallback для curl
+        "gnupg2"                    # Для GPG ключей
+        "ca-certificates"           # Для HTTPS
+        "apt-transport-https"       # Для HTTPS репозиториев
+        "lsb-release"              # Для определения версии
+        "software-properties-common" # Для add-apt-repository (Ubuntu)
+    )
+    
+    log_info "Установка: ${common_deps[*]}"
+    
+    # Проверка блокировки перед установкой
+    if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+        if command -v wait_for_apt_lock &>/dev/null; then
+            wait_for_apt_lock || return 1
+        else
+            sleep 10
+        fi
+    fi
+    
+    if apt-get install -y "${common_deps[@]}" 2>&1 | \
+       grep -v "^WARNING:\|^Get:\|^Fetched" | tail -10; then
+        ok "Общие зависимости установлены"
+        INSTALLED_PACKAGES+=("${common_deps[@]}")
+        return 0
+    else
+        log_warn "Не удалось установить некоторые зависимости"
+        return 0  # Не критично
+    fi
+}
+
+# Детальная диагностика ошибок apt
+diagnose_apt_failure() {
+    local exit_code=$1
+    local command=$2
+    
+    log_error "❌ Команда apt не удалась (exit code: $exit_code)"
+    log_error "Команда: $command"
+    log_error ""
+    
+    log_info "📋 Диагностика apt:"
+    
+    # Проверка блокировок
+    if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+        local pid=$(fuser /var/lib/dpkg/lock-frontend 2>&1 | awk '{print $NF}')
+        log_error "  ⚠️  dpkg заблокирован процессом: $pid"
+        if ps -p "$pid" -o comm= 2>/dev/null; then
+            log_error "     Процесс: $(ps -p "$pid" -o comm= 2>/dev/null)"
+        fi
+    fi
+    
+    if fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+        local pid=$(fuser /var/lib/apt/lists/lock 2>&1 | awk '{print $NF}')
+        log_error "  ⚠️  apt lists заблокированы процессом: $pid"
+    fi
+    
+    # Проверка дискового пространства
+    if df -h /var/lib/apt/lists/ 2>/dev/null | tail -1 | awk '{print $5}' | grep -q "100%"; then
+        log_error "  ⚠️  Диск заполнен на 100%"
+    else
+        local df_output=$(df -h /var/lib/apt/lists/ 2>/dev/null | tail -1)
+        log_info "  💾 Дисковое пространство: $df_output"
+    fi
+    
+    # Проверка сетевого подключения
+    if ! ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+        log_error "  ⚠️  Нет интернет-соединения"
+    fi
+    
+    # Проверка DNS
+    if ! nslookup deb.debian.org >/dev/null 2>&1; then
+        log_error "  ⚠️  Проблема с DNS"
+    fi
+    
+    # Рекомендации
+    log_error ""
+    log_error "🔧 ВОЗМОЖНЫЕ РЕШЕНИЯ:"
+    log_error "  1. Освободить apt: sudo killall apt apt-get"
+    log_error "  2. Очистить кэш: sudo apt clean"
+    log_error "  3. Удалить блокировки: sudo rm /var/lib/apt/lists/lock"
+    log_error "  4. Переконфигурировать dpkg: sudo dpkg --configure -a"
+    log_error "  5. Проверить интернет: ping 8.8.8.8"
+    log_error "  6. Проверить DNS: nslookup deb.debian.org"
+    log_error ""
+}
+
+# Экспорт новых функций
+export -f smart_apt_update
+export -f reset_apt_cache
+export -f install_common_dependencies_debian
+export -f diagnose_apt_failure
 

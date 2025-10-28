@@ -18,6 +18,8 @@ source "$LIB_DIR/checks.sh"
 source "$LIB_DIR/progress.sh"
 source "$LIB_DIR/rollback.sh"
 source "$LIB_DIR/firewall.sh"
+source "$LIB_DIR/repositories.sh"  # Новый модуль
+source "$LIB_DIR/debian.sh"        # Новый модуль
 source "$LIB_DIR/database.sh"
 source "$LIB_DIR/cache.sh"
 source "$LIB_DIR/queue.sh"
@@ -198,6 +200,24 @@ main() {
     # Создать lock-файл
     mkdir -p "$LOCK_DIR"
     touch "$LOCK_FILE"
+    
+    # Оптимизации для Debian/Ubuntu
+    local os_type=$(get_os_type)
+    if [ "$os_type" = "debian" ] || [ "$os_type" = "ubuntu" ]; then
+        log_info "Применение оптимизаций для $os_type..."
+        
+        # Установить общие зависимости
+        install_common_dependencies_debian || log_warn "Не удалось установить все зависимости"
+        
+        # Настроить репозитории централизованно
+        setup_debian_repositories || {
+            log_error "Не удалось настроить репозитории"
+            return 1
+        }
+        
+        # Оптимизировать систему для production
+        optimize_debian_system || log_warn "Не удалось применить все оптимизации"
+    fi
     
     # Этап 1: Настройка домена
     if [ "$DOMAIN" = "auto" ] || [ -z "$DOMAIN" ]; then

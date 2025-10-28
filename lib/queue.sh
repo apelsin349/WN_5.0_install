@@ -46,8 +46,12 @@ install_rabbitmq_fallback() {
     # Удалить неработающие репозитории
     rm -f /etc/apt/sources.list.d/rabbitmq.list 2>/dev/null
     
-    # Обновить списки
-    apt update
+    # Обновить списки через smart_apt_update
+    if command -v smart_apt_update &>/dev/null; then
+        smart_apt_update
+    else
+        apt update
+    fi
     
     # Установить Erlang из репозиториев Ubuntu/Debian
     log_info "Установка Erlang из стандартных репозиториев..."
@@ -143,9 +147,16 @@ EOF
         log_info "Репозитории RabbitMQ добавлены"
     fi
     
-    # Обновить списки пакетов
+    # Обновить списки пакетов через smart_apt_update
     log_info "Обновление списков пакетов..."
-    if ! apt update 2>&1 | tee -a "$LOG_FILE"; then
+    local update_success=false
+    if command -v smart_apt_update &>/dev/null; then
+        smart_apt_update && update_success=true
+    else
+        apt update 2>&1 | tee -a "$LOG_FILE" && update_success=true
+    fi
+    
+    if [ "$update_success" = false ]; then
         log_warn "⚠️  Проблемы с обновлением репозиториев, используем fallback метод"
         install_rabbitmq_fallback
         return $?
