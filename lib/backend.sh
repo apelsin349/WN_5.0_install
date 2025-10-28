@@ -81,13 +81,38 @@ install_php_debian() {
         fi
     fi
     
-    # Добавить репозиторий Sury
-    if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ]; then
-        curl -fsSL -o /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.su/php/apt.gpg
-        echo "deb https://packages.sury.su/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
+    # Добавить репозиторий Sury (обязательно для Debian!)
+    if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ] || [ ! -f /etc/apt/sources.list.d/php.list ]; then
+        log_info "Добавление репозитория Sury для PHP 8.3..."
+        
+        # Установить необходимые пакеты
+        apt-get install -y apt-transport-https lsb-release ca-certificates curl gnupg2 &>/dev/null || true
+        
+        # Скачать и добавить GPG ключ
+        log_info "Загрузка GPG ключа..."
+        if ! curl -fsSL -o /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg 2>/dev/null; then
+            # Fallback: старый метод с wget
+            wget -qO /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg || {
+                log_error "Не удалось загрузить GPG ключ Sury"
+                return 1
+            }
+        fi
+        
+        # Добавить репозиторий
+        log_info "Добавление репозитория PHP..."
+        echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
+        
+        # Обновить списки пакетов
+        log_info "Обновление списков пакетов..."
+        if ! apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -10; then
+            log_error "Не удалось обновить списки пакетов после добавления репозитория Sury"
+            return 1
+        fi
+        
+        ok "Репозиторий Sury добавлен успешно"
+    else
+        log_debug "Репозиторий Sury уже добавлен"
     fi
-    
-    run_cmd "apt update"
     
     # Список расширений PHP
     local php_packages="php8.3 php8.3-fpm php8.3-cli php8.3-common php8.3-curl php8.3-intl php8.3-mbstring php8.3-opcache php8.3-mysql php8.3-pgsql php8.3-readline php8.3-xml php8.3-zip php8.3-snmp php8.3-gd php8.3-posix php8.3-soap php8.3-ldap"
