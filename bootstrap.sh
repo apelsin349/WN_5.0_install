@@ -3,7 +3,7 @@
 # WorkerNet Installer v5.0
 # 
 # Использование:
-# curl -O http://workernet.online/improved/bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
+# curl -O http://workernet.online/WN_5.0_install/bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
 
 # НЕ используем set -e чтобы обработать ошибки curl вручную
 set -uo pipefail
@@ -16,7 +16,7 @@ COLOR_RED="\033[1;31m"
 COLOR_RESET="\033[0m"
 
 # Базовый URL (настроить на реальный сервер)
-BASE_URL="http://workernet.online/improved"
+BASE_URL="http://workernet.online/WN_5.0_install"
 
 # Директория для загрузки
 DOWNLOAD_DIR="workernet_installer_v5"
@@ -79,8 +79,8 @@ else
     error "  3. Нет интернет-соединения"
     error ""
     error "Для локальной установки:"
-    error "  1. Скопируйте всю папку 'improved/' на сервер"
-    error "  2. Запустите: cd improved && sudo ./install.sh"
+    error "  1. Скопируйте всю папку 'WN_5.0_install/' на сервер"
+    error "  2. Запустите: cd WN_5.0_install && sudo ./install.sh"
     exit 1
 fi
 

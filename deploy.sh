@@ -4,17 +4,17 @@
 # 
 # Использование:
 #   Способ 1 (локальное копирование):
-#     cp -r improved/ /tmp/workernet_installer/
+#     cp -r WN_5.0_install/ /tmp/workernet_installer/
 #     cd /tmp/workernet_installer/
 #     sudo ./install.sh
 #
 #   Способ 2 (через SCP):
-#     tar czf improved.tar.gz improved/
-#     scp improved.tar.gz root@server:/tmp/
-#     ssh root@server "cd /tmp && tar xzf improved.tar.gz && cd improved && ./install.sh"
+#     tar czf WN_5.0_install.tar.gz WN_5.0_install/
+#     scp WN_5.0_install.tar.gz root@server:/tmp/
+#     ssh root@server "cd /tmp && tar xzf WN_5.0_install.tar.gz && cd WN_5.0_install && ./install.sh"
 #
 #   Способ 3 (этот скрипт - копирование на веб-сервер):
-#     sudo ./deploy.sh /var/www/html/improved
+#     sudo ./deploy.sh /var/www/html/WN_5.0_install
 
 set -uo pipefail
 
@@ -70,7 +70,7 @@ if [ $# -eq 0 ]; then
     echo ""
     echo "Примеры:"
     echo "  # Развернуть на веб-сервер для удаленной установки:"
-    echo "  sudo $0 /var/www/html/improved"
+    echo "  sudo $0 /var/www/html/WN_5.0_install"
     echo ""
     echo "  # Развернуть локально для установки:"
     echo "  sudo $0 /tmp/workernet_installer"
