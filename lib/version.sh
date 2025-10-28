@@ -6,8 +6,30 @@
 VERSIONS=("3.x" "4.x" "5.x")
 DESCRIPTIONS=("Стабильная версия (Legacy)" "Текущая стабильная (Рекомендуется)" "Новая версия с React + Go (В разработке)")
 FEATURES=("PHP 8.3, PostgreSQL 15-16, Python 3.8+, 14 модулей интеграции" "PHP 8.3, PostgreSQL 16, Python 3.9+, 11 модулей, улучшенный UI" "React+MUI frontend, Go microservices (опционально), современный стек")
+
 # Глобальная переменная выбранной версии
 WORKERNET_VERSION=""
+
+# Ассоциативные массивы для версий (ВАЖНО: должны быть объявлены как ассоциативные)
+declare -A SUPPORTED_VERSIONS
+declare -A VERSION_FEATURES
+declare -A VERSION_MODULE_PREFIX
+declare -a VERSION_ORDER
+
+# Инициализация ассоциативных массивов
+SUPPORTED_VERSIONS["3.x"]="${DESCRIPTIONS[0]}"
+SUPPORTED_VERSIONS["4.x"]="${DESCRIPTIONS[1]}"
+SUPPORTED_VERSIONS["5.x"]="${DESCRIPTIONS[2]}"
+
+VERSION_FEATURES["3.x"]="${FEATURES[0]}"
+VERSION_FEATURES["4.x"]="${FEATURES[1]}"
+VERSION_FEATURES["5.x"]="${FEATURES[2]}"
+
+VERSION_MODULE_PREFIX["3.x"]="erp"
+VERSION_MODULE_PREFIX["4.x"]="wnm"
+VERSION_MODULE_PREFIX["5.x"]="wn5"
+
+VERSION_ORDER=("3.x" "4.x" "5.x")
 
 # Показать список версий
 show_versions() {

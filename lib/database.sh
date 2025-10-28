@@ -2,14 +2,16 @@
 # database.sh - Установка PostgreSQL 16 + PostGIS 3
 # WorkerNet Installer v5.0
 
-# КРИТИЧНО: Установить переменные окружения для локали ГЛОБАЛЬНО
+# КРИТИЧНО: Установить переменные окружения для локали ГЛОБАЛЬНО (если локаль доступна)
 # Это необходимо для всех команд PostgreSQL в этом файле
-export LANG=ru_RU.UTF-8
-export LANGUAGE=ru_RU:ru
-export LC_ALL=ru_RU.UTF-8
-export LC_CTYPE=ru_RU.UTF-8
-export LC_COLLATE=ru_RU.UTF-8
-export LC_MESSAGES=ru_RU.UTF-8
+if locale -a 2>/dev/null | grep -q "ru_RU.utf8\|ru_RU.UTF-8"; then
+    export LANG=ru_RU.UTF-8
+    export LANGUAGE=ru_RU:ru
+    export LC_ALL=ru_RU.UTF-8
+    export LC_CTYPE=ru_RU.UTF-8
+    export LC_COLLATE=ru_RU.UTF-8
+    export LC_MESSAGES=ru_RU.UTF-8
+fi
 
 # КРИТИЧНО: Проверить и установить русскую локаль ПЕРЕД всеми операциями PostgreSQL
 ensure_russian_locale() {
