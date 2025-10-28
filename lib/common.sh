@@ -548,6 +548,73 @@ diagnose_apt_failure() {
         log_error "  ⚠️  Проблема с DNS"
     fi
     
+    # Проверка репозиториев через apt-cache policy
+    log_error ""
+    log_info "📦 Диагностика репозиториев:"
+    
+    # Проверить что apt-cache работает
+    if apt-cache policy >/dev/null 2>&1; then
+        log_info "  ✅ apt-cache policy работает"
+        
+        # Проверить основные репозитории Debian/Ubuntu
+        if apt-cache policy 2>/dev/null | grep -q "debian.org\|ubuntu.com"; then
+            log_info "  ✅ Основные репозитории доступны"
+        else
+            log_error "  ❌ Основные репозитории недоступны"
+        fi
+        
+        # Проверить добавленные репозитории
+        local repos=(
+            "apt.postgresql.org:PostgreSQL"
+            "packages.sury.org/php:PHP (Sury)"
+        )
+        
+        for repo_info in "${repos[@]}"; do
+            local repo="${repo_info%%:*}"
+            local name="${repo_info##*:}"
+            
+            if apt-cache policy 2>/dev/null | grep -q "$repo"; then
+                log_info "  ✅ $name репозиторий активен"
+            else
+                log_warn "  ⚠️  $name репозиторий отсутствует"
+            fi
+        done
+        
+        # Проверить доступность ключевых пакетов
+        log_error ""
+        log_info "📋 Доступность ключевых пакетов:"
+        for pkg in postgresql-16 php8.3 rabbitmq-server; do
+            local version=$(apt-cache policy "$pkg" 2>/dev/null | \
+                            grep "Candidate:" | awk '{print $2}')
+            if [ -n "$version" ] && [ "$version" != "(none)" ]; then
+                log_info "  ✅ $pkg: $version"
+            else
+                log_warn "  ⚠️  $pkg: недоступен"
+            fi
+        done
+    else
+        log_error "  ❌ apt-cache policy не работает (битые файлы репозиториев?)"
+        
+        # Показать битые файлы
+        log_error ""
+        log_info "🔍 Проверка файлов репозиториев:"
+        for file in /etc/apt/sources.list.d/*.list; do
+            if [ -f "$file" ]; then
+                if grep -v "^#" "$file" | grep -v "^$" >/dev/null 2>&1; then
+                    log_debug "  📄 $file"
+                    # Попробовать прочитать файл
+                    if ! cat "$file" >/dev/null 2>&1; then
+                        log_error "    ❌ Не удается прочитать файл"
+                    elif ! grep -E "^deb " "$file" >/dev/null 2>&1; then
+                        log_warn "    ⚠️  Нет валидных записей 'deb'"
+                    else
+                        log_debug "    ✅ Файл выглядит корректно"
+                    fi
+                fi
+            fi
+        done
+    fi
+    
     # Рекомендации
     log_error ""
     log_error "🔧 ВОЗМОЖНЫЕ РЕШЕНИЯ:"
@@ -557,6 +624,8 @@ diagnose_apt_failure() {
     log_error "  4. Переконфигурировать dpkg: sudo dpkg --configure -a"
     log_error "  5. Проверить интернет: ping 8.8.8.8"
     log_error "  6. Проверить DNS: nslookup deb.debian.org"
+    log_error "  7. Удалить битые репозитории: ls /etc/apt/sources.list.d/"
+    log_error "  8. Обновить apt: sudo apt update"
     log_error ""
 }
 

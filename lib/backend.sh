@@ -175,6 +175,17 @@ install_php_debian() {
         log_debug "Репозиторий Sury уже добавлен"
     fi
     
+    # Проверить доступность пакетов перед установкой
+    if command -v check_package_availability &>/dev/null; then
+        log_info "Проверка доступности пакетов PHP..."
+        if ! check_package_availability "php8.3" "8.3"; then
+            log_error "PHP 8.3 недоступен в репозиториях"
+            log_error "Проверьте репозиторий: apt-cache policy php8.3"
+            log_error "Убедитесь что packages.sury.org/php активен"
+            return 1
+        fi
+    fi
+    
     # Список расширений PHP
     local php_packages="php8.3 php8.3-fpm php8.3-cli php8.3-common php8.3-curl php8.3-intl php8.3-mbstring php8.3-opcache php8.3-mysql php8.3-pgsql php8.3-readline php8.3-xml php8.3-zip php8.3-snmp php8.3-gd php8.3-posix php8.3-soap php8.3-ldap"
     

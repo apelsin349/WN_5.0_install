@@ -151,6 +151,16 @@ install_postgresql_debian() {
         fi
     fi
     
+    # Проверить доступность пакетов перед установкой
+    if command -v check_package_availability &>/dev/null; then
+        log_info "Проверка доступности пакетов PostgreSQL..."
+        if ! check_package_availability "postgresql-16" "16.0"; then
+            log_error "PostgreSQL 16 недоступен в репозиториях"
+            log_error "Проверьте репозиторий: apt-cache policy postgresql-16"
+            return 1
+        fi
+    fi
+    
     # Установить PostgreSQL 16
     timed_run "Установка PostgreSQL 16" \
         "apt install -y postgresql-16"
