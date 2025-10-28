@@ -133,18 +133,28 @@ install_rabbitmq_debian() {
     
     # Добавить репозитории (с зеркалами) только если ключ добавлен
     if [ "$key_added" = true ] && [ ! -f /etc/apt/sources.list.d/rabbitmq.list ]; then
+        # Определить правильный путь для репозитория (debian vs ubuntu)
+        local os_type=$(get_os_type)
+        local repo_distro="debian"  # По умолчанию debian
+        
+        if [ "$os_type" = "ubuntu" ]; then
+            repo_distro="ubuntu"
+        fi
+        
+        log_debug "Используем репозиторий RabbitMQ для: $repo_distro"
+        
         cat > /etc/apt/sources.list.d/rabbitmq.list <<EOF
 # Modern Erlang/OTP releases (с зеркалами)
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/erlang/ubuntu/ $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/ubuntu/$codename $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/ubuntu/$codename $codename main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/erlang/$repo_distro/ $codename main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/$repo_distro/$codename $codename main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/$repo_distro/$codename $codename main
 
 # Latest RabbitMQ releases (с зеркалами)
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/rabbitmq-server/ubuntu/ $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/ubuntu/$codename $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/ubuntu/$codename $codename main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/rabbitmq-server/$repo_distro/ $codename main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/$repo_distro/$codename $codename main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/$repo_distro/$codename $codename main
 EOF
-        log_info "Репозитории RabbitMQ добавлены"
+        log_info "Репозитории RabbitMQ добавлены для $repo_distro"
     fi
     
     # Обновить списки пакетов через smart_apt_update
