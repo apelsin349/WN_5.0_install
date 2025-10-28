@@ -2,6 +2,117 @@
 # queue.sh - Установка RabbitMQ + Erlang (с fallback методами)
 # WorkerNet Installer v5.0
 
+# Функция проверки доступности репозитория
+check_repo_available() {
+    local url="$1"
+    local timeout="${2:-5}"
+    
+    # Проверяем доступность через curl с коротким таймаутом
+    if timeout "$timeout" curl -fsS --head "$url" >/dev/null 2>&1; then
+        return 0  # Доступен
+    else
+        return 1  # Недоступен
+    fi
+}
+
+# Функция умного выбора доступных репозиториев
+select_available_repos() {
+    local package_type="$1"  # "erlang" или "rabbitmq-server"
+    local repo_distro="$2"   # "debian" или "ubuntu"
+    local codename="$3"      # "bookworm", "jammy", etc.
+    
+    log_debug "Проверка доступности зеркал для $package_type..."
+    
+    # Список зеркал (в порядке приоритета)
+    local mirrors=(
+        "https://deb1.rabbitmq.com/rabbitmq-${package_type}/${repo_distro}/${codename}"
+        "https://deb2.rabbitmq.com/rabbitmq-${package_type}/${repo_distro}/${codename}"
+        "https://ppa1.rabbitmq.com/rabbitmq-${package_type}/${repo_distro}/${codename}"
+        "https://ppa2.rabbitmq.com/rabbitmq-${package_type}/${repo_distro}/${codename}"
+    )
+    
+    local available_repos=()
+    local checked=0
+    local found=0
+    
+    for mirror in "${mirrors[@]}"; do
+        ((checked++))
+        log_debug "  Проверка зеркала $checked/${#mirrors[@]}: $mirror"
+        
+        # Проверяем доступность InRelease файла
+        if check_repo_available "${mirror}/InRelease" 3; then
+            available_repos+=("$mirror")
+            ((found++))
+            log_debug "    ✅ Доступен"
+        else
+            log_debug "    ❌ Недоступен"
+        fi
+    done
+    
+    # Вернуть список доступных репозиториев
+    if [ ${#available_repos[@]} -gt 0 ]; then
+        log_info "✅ Найдено доступных зеркал для $package_type: $found/${#mirrors[@]}"
+        printf '%s\n' "${available_repos[@]}"
+        return 0
+    else
+        log_warn "⚠️  Нет доступных зеркал для $package_type"
+        return 1
+    fi
+}
+
+# Функция создания файла репозитория из доступных зеркал
+create_rabbitmq_repo_file() {
+    local repo_distro="$1"
+    local codename="$2"
+    local keyring="/usr/share/keyrings/com.rabbitmq.team.gpg"
+    
+    log_info "Создание списка репозиториев из доступных зеркал..."
+    
+    # Получить доступные зеркала для Erlang
+    local erlang_repos
+    erlang_repos=$(select_available_repos "erlang" "$repo_distro" "$codename")
+    
+    # Получить доступные зеркала для RabbitMQ
+    local rabbitmq_repos
+    rabbitmq_repos=$(select_available_repos "rabbitmq-server" "$repo_distro" "$codename")
+    
+    # Если нет доступных репозиториев - вернуть ошибку
+    if [ -z "$erlang_repos" ] && [ -z "$rabbitmq_repos" ]; then
+        log_error "Нет доступных репозиториев RabbitMQ"
+        return 1
+    fi
+    
+    # Создать файл репозиториев
+    cat > /etc/apt/sources.list.d/rabbitmq.list <<EOF
+# WorkerNet Installer - Автоматически выбранные доступные зеркала RabbitMQ
+# Сгенерировано: $(date)
+
+# Modern Erlang/OTP releases (проверенные зеркала)
+EOF
+    
+    # Добавить доступные Erlang репозитории
+    if [ -n "$erlang_repos" ]; then
+        while IFS= read -r repo; do
+            echo "deb [arch=amd64 signed-by=$keyring] $repo $codename main" >> /etc/apt/sources.list.d/rabbitmq.list
+        done <<< "$erlang_repos"
+        log_info "  Добавлено Erlang зеркал: $(echo "$erlang_repos" | wc -l)"
+    fi
+    
+    echo "" >> /etc/apt/sources.list.d/rabbitmq.list
+    echo "# Latest RabbitMQ releases (проверенные зеркала)" >> /etc/apt/sources.list.d/rabbitmq.list
+    
+    # Добавить доступные RabbitMQ репозитории
+    if [ -n "$rabbitmq_repos" ]; then
+        while IFS= read -r repo; do
+            echo "deb [arch=amd64 signed-by=$keyring] $repo $codename main" >> /etc/apt/sources.list.d/rabbitmq.list
+        done <<< "$rabbitmq_repos"
+        log_info "  Добавлено RabbitMQ зеркал: $(echo "$rabbitmq_repos" | wc -l)"
+    fi
+    
+    ok "Репозитории RabbitMQ настроены (только доступные зеркала)"
+    return 0
+}
+
 # Установка RabbitMQ
 install_rabbitmq() {
     log_section "📨 УСТАНОВКА RABBITMQ + ERLANG"
@@ -131,7 +242,7 @@ install_rabbitmq_debian() {
         key_added=true
     fi
     
-    # Добавить репозитории (с зеркалами) только если ключ добавлен
+    # Добавить репозитории (с умной проверкой доступности) только если ключ добавлен
     if [ "$key_added" = true ] && [ ! -f /etc/apt/sources.list.d/rabbitmq.list ]; then
         # Определить правильный путь для репозитория (debian vs ubuntu)
         local os_type=$(get_os_type)
@@ -141,20 +252,13 @@ install_rabbitmq_debian() {
             repo_distro="ubuntu"
         fi
         
-        log_debug "Используем репозиторий RabbitMQ для: $repo_distro"
+        log_info "Проверка доступности репозиториев RabbitMQ для: $repo_distro"
         
-        cat > /etc/apt/sources.list.d/rabbitmq.list <<EOF
-# Modern Erlang/OTP releases (с зеркалами)
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/erlang/$repo_distro/ $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/$repo_distro/$codename $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/$repo_distro/$codename $codename main
-
-# Latest RabbitMQ releases (с зеркалами)
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/rabbitmq-server/$repo_distro/ $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/$repo_distro/$codename $codename main
-deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/$repo_distro/$codename $codename main
-EOF
-        log_info "Репозитории RabbitMQ добавлены для $repo_distro"
+        # Использовать умную функцию выбора доступных репозиториев
+        if ! create_rabbitmq_repo_file "$repo_distro" "$codename"; then
+            log_warn "⚠️  Не удалось найти доступные репозитории RabbitMQ"
+            log_info "Будет использован fallback метод установки"
+        fi
     fi
     
     # Обновить списки пакетов через smart_apt_update
