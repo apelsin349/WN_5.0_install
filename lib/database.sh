@@ -117,7 +117,7 @@ install_postgresql_debian() {
     
     # Обновить списки пакетов
     log_info "⏱️  Starting: Обновление списков пакетов"
-    if apt update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -5; then
+    if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | grep -v "^WARNING:" | tail -10; then
         ok "Обновление списков пакетов"
     else
         log_error "Не удалось обновить списки пакетов"
