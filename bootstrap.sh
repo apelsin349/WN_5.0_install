@@ -95,7 +95,6 @@ FILES_TO_DOWNLOAD=(
     "install.conf.example.yml"
     "update_credentials.sh"
     "ИНСТРУКЦИЯ_ПОЛЬЗОВАТЕЛЯ.md"
-    "ПОСЛЕ_УСТАНОВКИ.md"
     "lib/common.sh"
     "lib/logging.sh"
     "lib/config.sh"
