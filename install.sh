@@ -143,6 +143,32 @@ main() {
     print_system_info
     init_progress
     
+    # Проверка и установка sudo (критично для Debian minimal)
+    if ! command -v sudo &>/dev/null; then
+        log_warn "⚠️  sudo не установлен, устанавливаем..."
+        
+        # Проверяем что мы root
+        if [ "$(id -u)" != "0" ]; then
+            log_error "sudo не установлен и скрипт запущен не от root"
+            log_error "Установите sudo вручную: su - && apt update && apt install -y sudo"
+            exit 1
+        fi
+        
+        # Устанавливаем sudo
+        if command -v apt-get &>/dev/null; then
+            apt-get update -qq && apt-get install -y sudo
+            if command -v sudo &>/dev/null; then
+                ok "sudo установлен успешно"
+            else
+                log_error "Не удалось установить sudo"
+                exit 1
+            fi
+        else
+            log_error "apt-get недоступен, не могу установить sudo"
+            exit 1
+        fi
+    fi
+    
     # Установить rollback trap
     if [ "$NO_ROLLBACK" != "true" ]; then
         setup_rollback_trap

@@ -474,6 +474,7 @@ install_common_dependencies_debian() {
     log_info "Установка общих зависимостей для Debian/Ubuntu..."
     
     local common_deps=(
+        "sudo"                      # Для прав суперпользователя
         "curl"                      # Для загрузки файлов
         "wget"                      # Fallback для curl
         "gnupg2"                    # Для GPG ключей
