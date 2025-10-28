@@ -57,7 +57,7 @@ install_apache() {
             a2enmod rewrite
             a2enconf php8.3-fpm
             a2enmod proxy_fcgi setenvif
-            a2enmod proxy proxy_wstunnel
+            a2enmod proxy proxy_wstunnel proxy_http headers
             ;;
         almalinux)
             timed_run "Установка Apache (httpd)" \
@@ -262,12 +262,22 @@ configure_apache() {
     </FilesMatch>
     
     <IfModule mod_proxy.c>
+        # WebSocket proxy для RabbitMQ
         <IfModule mod_proxy_wstunnel.c>
             RewriteCond %{HTTP:Upgrade} =websocket [NC]
             RewriteCond %{HTTP:Connection} upgrade [NC]
             ProxyPass /ws ws://127.0.0.1:15674/ws
             ProxyPassReverse /ws ws://127.0.0.1:15674/ws
         </IfModule>
+        
+        # API proxy для Backend сервиса
+        <Location /api/>
+            ProxyPass http://127.0.0.1:8843/
+            ProxyPassReverse http://127.0.0.1:8843/
+            ProxyPreserveHost On
+            RequestHeader set X-Forwarded-Proto "http"
+            RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}s"
+        </Location>
     </IfModule>
     
     <FilesMatch "^\.ht">
@@ -438,6 +448,14 @@ server {
         fastcgi_param SCRIPT_FILENAME \$root_path\$fastcgi_script_name;
         fastcgi_read_timeout 600;
         include       fastcgi_params;
+    }
+    
+    location /api/ {
+        proxy_pass http://127.0.0.1:8843;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
     
     location /ws {
