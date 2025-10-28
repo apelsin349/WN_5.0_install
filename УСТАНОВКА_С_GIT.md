@@ -66,13 +66,19 @@ open http://localhost:8000
 ### Необходимое ПО
 
 ```bash
-# Проверить наличие Git
+# Проверить наличие Git и curl
 git --version
+curl --version
 
-# Если Git не установлен
+# Если Git или curl не установлены
 sudo apt update
 sudo apt install -y git curl
+
+# Для AlmaLinux
+sudo dnf install -y git curl
 ```
+
+**Примечание:** `curl` требуется для удаленной установки через bootstrap.sh
 
 ### ⚠️ Требуются права sudo
 
@@ -725,6 +731,31 @@ sequenceDiagram
 ## 🆘 РЕШЕНИЕ ПРОБЛЕМ
 
 ### Частые проблемы
+
+**Проблема:** `curl: command not found`
+```bash
+# Решение: установить curl
+# Для Debian/Ubuntu
+sudo apt update && sudo apt install -y curl
+
+# Для AlmaLinux
+sudo dnf install -y curl
+
+# Проверка
+curl --version
+
+# Если нет sudo прав (user is not in the sudoers file):
+# Использовать root
+su -
+apt update && apt install -y curl  # или dnf install -y curl
+exit
+
+# Альтернатива: использовать git clone вместо curl
+sudo apt install -y git  # или через root: su - && apt install -y git
+git clone https://github.com/apelsin349/WN_5.0_install.git
+cd WN_5.0_install
+sudo ./install.sh
+```
 
 **Проблема:** install.sh: command not found
 ```bash
