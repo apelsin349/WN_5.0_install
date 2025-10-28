@@ -85,27 +85,69 @@ install_php_debian() {
     if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ] || [ ! -f /etc/apt/sources.list.d/php.list ]; then
         log_info "Добавление репозитория Sury для PHP 8.3..."
         
+        # Дополнительная проверка блокировки перед добавлением репозитория
+        if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+           fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            log_warn "apt занят, ожидаем освобождения..."
+            if command -v wait_for_apt_lock &>/dev/null; then
+                wait_for_apt_lock || return 1
+            else
+                sleep 10
+            fi
+        fi
+        
         # Установить необходимые пакеты
-        apt-get install -y apt-transport-https lsb-release ca-certificates curl gnupg2 &>/dev/null || true
+        log_info "Установка зависимостей (curl, gnupg2, ca-certificates)..."
+        apt-get install -y apt-transport-https lsb-release ca-certificates curl gnupg2 2>&1 | grep -v "^WARNING:" | tail -5 || true
         
         # Скачать и добавить GPG ключ
-        log_info "Загрузка GPG ключа..."
+        log_info "Загрузка GPG ключа Sury..."
         if ! curl -fsSL -o /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg 2>/dev/null; then
             # Fallback: старый метод с wget
+            log_warn "curl не сработал, пробуем wget..."
             wget -qO /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg || {
                 log_error "Не удалось загрузить GPG ключ Sury"
                 return 1
             }
         fi
+        ok "GPG ключ Sury загружен"
         
         # Добавить репозиторий
         log_info "Добавление репозитория PHP..."
         echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
+        ok "Репозиторий PHP добавлен в /etc/apt/sources.list.d/php.list"
+        
+        # Проверить блокировку перед apt update
+        if fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            log_warn "apt списки заблокированы, ожидаем..."
+            if command -v wait_for_apt_lock &>/dev/null; then
+                wait_for_apt_lock || return 1
+            else
+                sleep 10
+            fi
+        fi
         
         # Обновить списки пакетов
-        log_info "Обновление списков пакетов..."
-        if ! apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -10; then
-            log_error "Не удалось обновить списки пакетов после добавления репозитория Sury"
+        log_info "Обновление списков пакетов (может занять время)..."
+        local update_retries=0
+        local update_success=false
+        
+        while [ $update_retries -lt 3 ]; do
+            if apt-get update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | grep -v "^WARNING:" | tail -10; then
+                update_success=true
+                break
+            else
+                update_retries=$((update_retries + 1))
+                if [ $update_retries -lt 3 ]; then
+                    log_warn "apt update не удался, попытка $update_retries/3. Ожидаем 10 секунд..."
+                    sleep 10
+                fi
+            fi
+        done
+        
+        if [ "$update_success" = false ]; then
+            log_error "Не удалось обновить списки пакетов после 3 попыток"
+            log_error "Проверьте сетевое подключение и доступность репозитория Sury"
             return 1
         fi
         
