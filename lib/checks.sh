@@ -81,26 +81,19 @@ check_disk_space() {
 check_memory() {
     log_info "Проверка оперативной памяти..."
     
-    # Используем -m (мегабайты) и делим на 1024 для точного расчета
+    # Используем -m для мегабайт, затем конвертируем в GB с точностью
     local total_ram_mb=$(free -m | awk '/Mem:/ {print $2}')
     local total_ram_gb=$((total_ram_mb / 1024))
     
-    # Если меньше 1GB, показываем 1GB (округление вверх для корректной проверки)
-    if [ $total_ram_gb -eq 0 ]; then
-        total_ram_gb=1
-    fi
-    
-    # Для более точной проверки: если >= 1.5GB, считаем как 2GB
-    if [ $total_ram_mb -ge 1536 ]; then
-        total_ram_gb=2
-    fi
+    # Для отображения с десятичными (опционально)
+    local total_ram_display=$(awk "BEGIN {printf \"%.1f\", $total_ram_mb/1024}")
     
     if [ $total_ram_gb -lt $MIN_RAM_GB ]; then
-        log_error "❌ Недостаточно RAM: ${total_ram_gb}GB (~${total_ram_mb}MB) (требуется минимум ${MIN_RAM_GB}GB)"
+        log_error "❌ Недостаточно RAM: ${total_ram_display}GB (требуется минимум ${MIN_RAM_GB}GB)"
         ((CHECK_ERRORS++))
         return 1
     else
-        ok "Оперативная память: ${total_ram_gb}GB (~${total_ram_mb}MB)"
+        ok "Оперативная память: ${total_ram_display}GB"
         return 0
     fi
 }
