@@ -116,7 +116,13 @@ install_postgresql_debian() {
     fi
     
     # Обновить списки пакетов
-    run_cmd "apt update"
+    log_info "⏱️  Starting: Обновление списков пакетов"
+    if apt update 2>&1 | tee -a "${LOG_FILE:-/dev/null}" | tail -5; then
+        ok "Обновление списков пакетов"
+    else
+        log_error "Не удалось обновить списки пакетов"
+        return 1
+    fi
     
     # Установить PostgreSQL 16
     timed_run "Установка PostgreSQL 16" \
