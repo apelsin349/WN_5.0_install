@@ -104,6 +104,8 @@ FILES_TO_DOWNLOAD=(
     "lib/progress.sh"
     "lib/rollback.sh"
     "lib/firewall.sh"
+    "lib/repositories.sh"
+    "lib/debian.sh"
     "lib/database.sh"
     "lib/cache.sh"
     "lib/queue.sh"
