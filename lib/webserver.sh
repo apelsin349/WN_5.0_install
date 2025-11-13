@@ -277,14 +277,7 @@ configure_apache() {
             ProxyPassReverse /ws ws://127.0.0.1:15674/ws
         </IfModule>
         
-        # API proxy для Backend сервиса
-        <Location /api/>
-            ProxyPass http://127.0.0.1:8843/
-            ProxyPassReverse http://127.0.0.1:8843/
-            ProxyPreserveHost On
-            RequestHeader set X-Forwarded-Proto "http"
-            RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}s"
-        </Location>
+        # PHP API обслуживается напрямую PHP-FPM, отдельный upstream не требуется
     </IfModule>
     
     <FilesMatch "^\.ht">
@@ -465,14 +458,6 @@ server {
         fastcgi_param SCRIPT_FILENAME \$root_path\$fastcgi_script_name;
         fastcgi_read_timeout 600;
         include       fastcgi_params;
-    }
-    
-    location /api/ {
-        proxy_pass http://127.0.0.1:8843;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
     
     location /ws {
