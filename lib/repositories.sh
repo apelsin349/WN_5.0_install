@@ -59,7 +59,7 @@ setup_debian_repositories() {
     local os_codename=$(lsb_release -sc 2>/dev/null || echo "bookworm")
     
     # 1. PostgreSQL репозиторий
-    if ! apt-cache policy 2>/dev/null | grep -q "apt.postgresql.org"; then
+    if ! LC_ALL=C apt-cache policy 2>/dev/null | grep -q "apt.postgresql.org"; then
         log_info "Добавление репозитория PostgreSQL..."
         
         # Загрузить GPG ключ
@@ -84,7 +84,7 @@ setup_debian_repositories() {
     fi
     
     # 2. PHP (Sury) репозиторий
-    if ! apt-cache policy 2>/dev/null | grep -q "packages.sury.org/php"; then
+    if ! LC_ALL=C apt-cache policy 2>/dev/null | grep -q "packages.sury.org/php"; then
         log_info "Добавление репозитория Sury (PHP 8.3)..."
         
         # Загрузить GPG ключ
@@ -142,7 +142,7 @@ setup_debian_repositories() {
 check_repository() {
     local repo_pattern=$1
     
-    if apt-cache policy 2>/dev/null | grep -q "$repo_pattern"; then
+    if LC_ALL=C apt-cache policy 2>/dev/null | grep -q "$repo_pattern"; then
         return 0
     else
         return 1
@@ -157,7 +157,7 @@ check_package_availability() {
     log_debug "Проверка доступности пакета: $package..."
     
     # Получить доступную версию
-    local available_version=$(apt-cache policy "$package" 2>/dev/null | \
+    local available_version=$(LC_ALL=C apt-cache policy "$package" 2>/dev/null | \
                               grep "Candidate:" | awk '{print $2}')
     
     if [ -z "$available_version" ] || [ "$available_version" = "(none)" ]; then
@@ -191,7 +191,7 @@ verify_repositories_added() {
     
     # PostgreSQL
     ((repos_checked++))
-    if apt-cache policy 2>/dev/null | grep -q "apt.postgresql.org"; then
+    if LC_ALL=C apt-cache policy 2>/dev/null | grep -q "apt.postgresql.org"; then
         ok "  ✅ PostgreSQL репозиторий активен"
         ((repos_ok++))
     else
@@ -201,7 +201,7 @@ verify_repositories_added() {
     
     # PHP (Sury)
     ((repos_checked++))
-    if apt-cache policy 2>/dev/null | grep -q "packages.sury.org/php"; then
+    if LC_ALL=C apt-cache policy 2>/dev/null | grep -q "packages.sury.org/php"; then
         ok "  ✅ PHP (Sury) репозиторий активен"
         ((repos_ok++))
     else
@@ -217,7 +217,7 @@ verify_repositories_added() {
     
     for pkg in postgresql-16 php8.3; do
         ((packages_checked++))
-        local version=$(apt-cache policy "$pkg" 2>/dev/null | \
+        local version=$(LC_ALL=C apt-cache policy "$pkg" 2>/dev/null | \
                         grep "Candidate:" | awk '{print $2}')
         if [ -n "$version" ] && [ "$version" != "(none)" ]; then
             ok "  ✅ $pkg: $version"
@@ -242,7 +242,7 @@ check_repository_priorities() {
     log_debug "Проверка приоритетов репозиториев..."
     
     # Проверить что Sury имеет приоритет для PHP
-    local php_source=$(apt-cache policy php8.3 2>/dev/null | \
+    local php_source=$(LC_ALL=C apt-cache policy php8.3 2>/dev/null | \
                        grep "Candidate:" -A5 | \
                        grep "packages.sury.org")
     
@@ -253,7 +253,7 @@ check_repository_priorities() {
     fi
     
     # Проверить PostgreSQL
-    local pg_source=$(apt-cache policy postgresql-16 2>/dev/null | \
+    local pg_source=$(LC_ALL=C apt-cache policy postgresql-16 2>/dev/null | \
                       grep "Candidate:" -A5 | \
                       grep "apt.postgresql.org")
     

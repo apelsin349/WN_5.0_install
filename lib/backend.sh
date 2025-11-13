@@ -86,7 +86,7 @@ install_php_debian() {
     local need_repo=false
     if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ] || [ ! -f /etc/apt/sources.list.d/php.list ]; then
         need_repo=true
-    elif ! apt-cache policy | grep -q "packages.sury.org/php"; then
+    elif ! LC_ALL=C apt-cache policy | grep -q "packages.sury.org/php"; then
         # Файлы есть, но репозиторий не в кэше apt - нужно обновить
         log_warn "Репозиторий Sury присутствует в файлах, но не в кэше apt. Обновляем..."
         need_repo=true

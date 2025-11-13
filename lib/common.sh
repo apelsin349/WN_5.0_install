@@ -200,7 +200,7 @@ check_package_version() {
     
     case $(get_os_type) in
         ubuntu|debian)
-            current_version=$(apt-cache policy "$package" 2>/dev/null | grep "Installed:" | awk '{print $2}' | head -1)
+            current_version=$(LC_ALL=C apt-cache policy "$package" 2>/dev/null | grep "Installed:" | awk '{print $2}' | head -1)
             ;;
         almalinux)
             current_version=$(rpm -q --queryformat '%{VERSION}' "$package" 2>/dev/null || echo "")
@@ -554,11 +554,11 @@ diagnose_apt_failure() {
     log_info "📦 Диагностика репозиториев:"
     
     # Проверить что apt-cache работает
-    if apt-cache policy >/dev/null 2>&1; then
+    if LC_ALL=C apt-cache policy >/dev/null 2>&1; then
         log_info "  ✅ apt-cache policy работает"
         
         # Проверить основные репозитории Debian/Ubuntu
-        if apt-cache policy 2>/dev/null | grep -q "debian.org\|ubuntu.com"; then
+        if LC_ALL=C apt-cache policy 2>/dev/null | grep -q "debian.org\|ubuntu.com"; then
             log_info "  ✅ Основные репозитории доступны"
         else
             log_error "  ❌ Основные репозитории недоступны"
@@ -574,7 +574,7 @@ diagnose_apt_failure() {
             local repo="${repo_info%%:*}"
             local name="${repo_info##*:}"
             
-            if apt-cache policy 2>/dev/null | grep -q "$repo"; then
+            if LC_ALL=C apt-cache policy 2>/dev/null | grep -q "$repo"; then
                 log_info "  ✅ $name репозиторий активен"
             else
                 log_warn "  ⚠️  $name репозиторий отсутствует"
@@ -585,7 +585,7 @@ diagnose_apt_failure() {
         log_error ""
         log_info "📋 Доступность ключевых пакетов:"
         for pkg in postgresql-16 php8.3 rabbitmq-server; do
-            local version=$(apt-cache policy "$pkg" 2>/dev/null | \
+            local version=$(LC_ALL=C apt-cache policy "$pkg" 2>/dev/null | \
                             grep "Candidate:" | awk '{print $2}')
             if [ -n "$version" ] && [ "$version" != "(none)" ]; then
                 log_info "  ✅ $pkg: $version"
