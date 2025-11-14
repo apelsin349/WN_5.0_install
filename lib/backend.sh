@@ -67,63 +67,463 @@ check_php_version_compatibility() {
     return 0
 }
 
-# Установка PHP (версия зависит от WORKERNET_VERSION)
-install_php() {
-    # Сначала проверить, установлен ли PHP
-    if command_exists php; then
-        # PHP уже установлен - проверить совместимость
-        if ! check_php_version_compatibility >/dev/null 2>&1; then
-            # PHP установлен, но несовместим
-            check_php_version_compatibility  # Показать сообщение об ошибке
-            return 1
+# Удалить все версии PHP, кроме указанной
+remove_other_php_versions() {
+    local keep_version="$1"
+    local os_type=$(get_os_type)
+    
+    log_info "Удаление других версий PHP (оставляем $keep_version)..."
+    
+    case $os_type in
+        ubuntu|debian)
+            # Получить список установленных версий PHP
+            local installed_versions=$(dpkg -l | grep -E '^ii.*php[0-9]+\.[0-9]+' | awk '{print $2}' | grep -oP 'php[0-9]+\.[0-9]+' | sort -u || true)
+            
+            if [ -z "$installed_versions" ]; then
+                log_info "Другие версии PHP не найдены"
+                return 0
+            fi
+            
+            for version in $installed_versions; do
+                # Извлечь версию из формата "php7.4" -> "7.4"
+                local version_num=$(echo "$version" | grep -oP '[0-9]+\.[0-9]+' | head -1)
+                
+                if [ "$version_num" != "$keep_version" ]; then
+                    local major=$(echo "$version_num" | cut -d. -f1)
+                    local minor=$(echo "$version_num" | cut -d. -f2)
+                    
+                    # Остановить сервисы
+                    systemctl stop "php${major}.${minor}-fpm" 2>/dev/null || true
+                    systemctl disable "php${major}.${minor}-fpm" 2>/dev/null || true
+                    
+                    # Удалить пакеты
+                    log_info "Удаление PHP $major.$minor..."
+                    apt-get remove -y --purge "php${major}.${minor}*" 2>&1 | grep -v "^WARNING:" | tail -10 || true
+                fi
+            done
+            
+            # Очистить неиспользуемые зависимости
+            apt-get autoremove -y 2>&1 | grep -v "^WARNING:" | tail -5 || true
+            ;;
+        almalinux)
+            # Для AlmaLinux удаляем все версии REMI PHP, кроме нужной
+            local major=$(echo "$keep_version" | cut -d. -f1)
+            local minor=$(echo "$keep_version" | cut -d. -f2)
+            local keep_prefix="php${major}${minor}"
+            
+            # Получить список установленных версий REMI PHP
+            local remi_packages=$(rpm -qa | grep -E '^php[0-9]+-php-' | grep -v "^$keep_prefix-" || true)
+            
+            if [ -n "$remi_packages" ]; then
+                log_info "Удаление других версий REMI PHP..."
+                dnf remove -y $remi_packages 2>&1 | tail -10 || true
+            fi
+            ;;
+    esac
+    
+    ok "Другие версии PHP удалены"
+}
+
+# Установка PHP 7.4 для Ubuntu
+install_php74_ubuntu() {
+    log_info "Установка PHP 7.4 для Ubuntu..."
+    
+    # Проверка apt lock
+    if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+        log_warn "apt занят, ожидаем..."
+        if command -v wait_for_apt_lock &>/dev/null; then
+            wait_for_apt_lock || return 1
         else
-            # PHP установлен и совместим
-            check_php_version_compatibility  # Показать сообщение об успехе
-            return 0
+            sleep 5
         fi
     fi
     
-    # PHP не установлен - определить требуемую версию
+    # Добавить PPA Ondřej Surý (если еще не добавлен)
+    if ! apt-cache policy | grep -q "ondrej/php"; then
+        run_cmd "apt install -y software-properties-common"
+        run_cmd "add-apt-repository ppa:ondrej/php -y"
+        run_cmd "apt update"
+    fi
+    
+    # Проверить доступность PHP 7.4
+    if ! apt-cache show php7.4 &>/dev/null; then
+        log_warn "Пакет php7.4 недоступен, обновляем списки пакетов..."
+        run_apt_update
+        
+        if ! apt-cache show php7.4 &>/dev/null; then
+            log_error "PHP 7.4 недоступен в репозиториях"
+            return 1
+        fi
+    fi
+    
+    log_info "✅ PHP 7.4 доступен в репозиториях"
+    
+    # Список расширений PHP 7.4
+    local php_packages="php7.4 php7.4-fpm php7.4-cli php7.4-common php7.4-curl php7.4-intl php7.4-mbstring php7.4-opcache php7.4-mysql php7.4-pgsql php7.4-readline php7.4-xml php7.4-zip php7.4-snmp php7.4-gd php7.4-posix php7.4-soap php7.4-ldap"
+    
+    timed_run "Установка PHP 7.4 и расширений" \
+        "apt install -y $php_packages"
+    
+    INSTALLED_PACKAGES+=($php_packages)
+    STARTED_SERVICES+=("php7.4-fpm")
+}
+
+# Установка PHP 7.4 для Debian
+install_php74_debian() {
+    log_info "Установка PHP 7.4 для Debian..."
+    
+    # Проверка apt lock
+    if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+        log_warn "apt занят, ожидаем..."
+        if command -v wait_for_apt_lock &>/dev/null; then
+            wait_for_apt_lock || return 1
+        else
+            sleep 5
+        fi
+    fi
+    
+    # Добавить репозиторий Sury (если еще не добавлен)
+    local need_repo=false
+    if [ ! -f /etc/apt/trusted.gpg.d/php.gpg ] || [ ! -f /etc/apt/sources.list.d/php.list ]; then
+        need_repo=true
+    elif ! LC_ALL=C apt-cache policy | grep -q "packages.sury.org/php"; then
+        need_repo=true
+    fi
+    
+    if [ "$need_repo" = true ]; then
+        log_info "Добавление репозитория Sury для PHP 7.4..."
+        
+        if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+           fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            log_warn "apt занят, ожидаем освобождения..."
+            if command -v wait_for_apt_lock &>/dev/null; then
+                wait_for_apt_lock || return 1
+            else
+                sleep 10
+            fi
+        fi
+        
+        apt-get install -y apt-transport-https lsb-release ca-certificates curl gnupg2 2>&1 | grep -v "^WARNING:" | tail -5 || true
+        
+        log_info "Загрузка GPG ключа Sury..."
+        if ! curl -fsSL -o /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg 2>/dev/null; then
+            wget -qO /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg || {
+                log_error "Не удалось загрузить GPG ключ Sury"
+                return 1
+            }
+        fi
+        
+        echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list
+        
+        if fuser /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            if command -v wait_for_apt_lock &>/dev/null; then
+                wait_for_apt_lock || return 1
+            else
+                sleep 10
+            fi
+        fi
+        
+        if command -v smart_apt_update &>/dev/null; then
+            smart_apt_update || return 1
+        else
+            apt-get update 2>&1 | grep -v "^WARNING:" | tail -10 || return 1
+        fi
+    fi
+    
+    # Проверить доступность PHP 7.4
+    if ! apt-cache show php7.4 &>/dev/null; then
+        log_warn "Пакет php7.4 недоступен, обновляем списки пакетов..."
+        run_apt_update
+        
+        if ! apt-cache show php7.4 &>/dev/null; then
+            log_error "PHP 7.4 недоступен в репозиториях"
+            return 1
+        fi
+    fi
+    
+    log_info "✅ PHP 7.4 доступен в репозиториях"
+    
+    # Список расширений PHP 7.4
+    local php_packages="php7.4 php7.4-fpm php7.4-cli php7.4-common php7.4-curl php7.4-intl php7.4-mbstring php7.4-opcache php7.4-mysql php7.4-pgsql php7.4-readline php7.4-xml php7.4-zip php7.4-snmp php7.4-gd php7.4-posix php7.4-soap php7.4-ldap"
+    
+    timed_run "Установка PHP 7.4 и расширений" \
+        "apt install -y $php_packages"
+    
+    INSTALLED_PACKAGES+=($php_packages)
+    STARTED_SERVICES+=("php7.4-fpm")
+}
+
+# Установка PHP 7.4 для AlmaLinux
+install_php74_almalinux() {
+    log_info "Установка PHP 7.4 для AlmaLinux..."
+    
+    # Репозиторий REMI должен быть добавлен
+    local php_packages="php74 php74-php-fpm php74-php-cli php74-php-common php74-php-curl php74-php-intl php74-php-json php74-php-mbstring php74-php-opcache php74-php-mysql php74-php-pgsql php74-php-readline php74-php-xml php74-php-zip php74-php-snmp php74-php-gd php74-php-soap php74-php-posix"
+    
+    timed_run "Установка PHP 7.4 и расширений" \
+        "dnf install -y $php_packages"
+    
+    INSTALLED_PACKAGES+=($php_packages)
+    STARTED_SERVICES+=("php74-php-fpm")
+    
+    # Настроить alternatives для php команды
+    update-alternatives --install /usr/bin/php php /opt/remi/php74/root/usr/bin/php 10
+    update-alternatives --set php /opt/remi/php74/root/usr/bin/php
+}
+
+# Проверить, установлена ли версия PHP
+is_php_version_installed() {
+    local target_version="$1"
+    local os_type=$(get_os_type)
+    local major=$(echo "$target_version" | cut -d. -f1)
+    local minor=$(echo "$target_version" | cut -d. -f2)
+    
+    case $os_type in
+        ubuntu|debian)
+            # Проверить наличие пакетов PHP нужной версии
+            if dpkg -l | grep -q "^ii.*php${major}.${minor}" 2>/dev/null; then
+                return 0
+            fi
+            # Проверить наличие бинарника
+            if [ -f "/usr/bin/php${major}.${minor}" ]; then
+                return 0
+            fi
+            ;;
+        almalinux)
+            # Проверить наличие пакетов REMI PHP
+            if rpm -qa | grep -q "^php${major}${minor}-php" 2>/dev/null; then
+                return 0
+            fi
+            # Проверить наличие бинарника
+            if [ -f "/opt/remi/php${major}${minor}/root/usr/bin/php" ]; then
+                return 0
+            fi
+            ;;
+    esac
+    
+    return 1
+}
+
+# Переключение на нужную версию PHP
+switch_php_version() {
+    local target_version="$1"
+    local os_type=$(get_os_type)
+    local current_version=""
+    
+    # Определить текущую версию PHP
+    if command_exists php; then
+        current_version=$(php -v 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+    fi
+    
+    # Если нужная версия уже установлена и активна
+    if [ -n "$current_version" ] && [ "$current_version" = "$target_version" ]; then
+        log_info "PHP $target_version уже установлен и активен ✓"
+        return 0
+    fi
+    
+    log_section "🔄 ПЕРЕКЛЮЧЕНИЕ НА PHP $target_version"
+    
+    # Проверить, установлена ли нужная версия PHP
+    if ! is_php_version_installed "$target_version"; then
+        log_info "PHP $target_version не установлен, выполняется установка..."
+        
+        # Установить нужную версию
+        case $os_type in
+            ubuntu)
+                if [ "$target_version" = "7.4" ]; then
+                    install_php74_ubuntu || return 1
+                elif [ "$target_version" = "8.3" ]; then
+                    install_php_ubuntu || return 1
+                fi
+                ;;
+            debian)
+                if [ "$target_version" = "7.4" ]; then
+                    install_php74_debian || return 1
+                elif [ "$target_version" = "8.3" ]; then
+                    install_php_debian || return 1
+                fi
+                ;;
+            almalinux)
+                if [ "$target_version" = "7.4" ]; then
+                    install_php74_almalinux || return 1
+                elif [ "$target_version" = "8.3" ]; then
+                    install_php_almalinux || return 1
+                fi
+                ;;
+        esac
+    else
+        log_info "PHP $target_version уже установлен, выполняю переключение..."
+    fi
+    
+    # Переключить на нужную версию
+    local major=$(echo "$target_version" | cut -d. -f1)
+    local minor=$(echo "$target_version" | cut -d. -f2)
+    local php_service="php${major}.${minor}-fpm"
+    
+    case $os_type in
+        ubuntu|debian)
+            # Для Ubuntu/Debian переключение через update-alternatives или прямое использование
+            local php_bin="/usr/bin/php${major}.${minor}"
+            
+            # Если есть прямое имя команды - используем его
+            if [ -f "$php_bin" ]; then
+                log_info "Переключение на PHP $target_version через обновление альтернатив..."
+                # Обновить альтернативы для php
+                update-alternatives --install /usr/bin/php php "$php_bin" 10 2>/dev/null || true
+                update-alternatives --set php "$php_bin" 2>/dev/null || true
+                
+                # Также обновить php-config и phpize, если есть
+                if [ -f "/usr/bin/php-config${major}.${minor}" ]; then
+                    update-alternatives --install /usr/bin/php-config php-config "/usr/bin/php-config${major}.${minor}" 10 2>/dev/null || true
+                    update-alternatives --set php-config "/usr/bin/php-config${major}.${minor}" 2>/dev/null || true
+                fi
+                if [ -f "/usr/bin/phpize${major}.${minor}" ]; then
+                    update-alternatives --install /usr/bin/phpize phpize "/usr/bin/phpize${major}.${minor}" 10 2>/dev/null || true
+                    update-alternatives --set phpize "/usr/bin/phpize${major}.${minor}" 2>/dev/null || true
+                fi
+            fi
+            ;;
+        almalinux)
+            php_service="php${major}${minor}-php-fpm"
+            
+            # Настроить alternatives для php команды
+            local php_bin="/opt/remi/php${major}${minor}/root/usr/bin/php"
+            if [ -f "$php_bin" ]; then
+                log_info "Настройка alternatives для PHP $target_version..."
+                update-alternatives --install /usr/bin/php php "$php_bin" 10 2>/dev/null || true
+                update-alternatives --set php "$php_bin" 2>/dev/null || true
+                
+                # Также настроить php-config и phpize
+                local php_config="/opt/remi/php${major}${minor}/root/usr/bin/php-config"
+                local phpize_bin="/opt/remi/php${major}${minor}/root/usr/bin/phpize"
+                
+                if [ -f "$php_config" ]; then
+                    update-alternatives --install /usr/bin/php-config php-config "$php_config" 10 2>/dev/null || true
+                    update-alternatives --set php-config "$php_config" 2>/dev/null || true
+                fi
+                if [ -f "$phpize_bin" ]; then
+                    update-alternatives --install /usr/bin/phpize phpize "$phpize_bin" 10 2>/dev/null || true
+                    update-alternatives --set phpize "$phpize_bin" 2>/dev/null || true
+                fi
+            fi
+            ;;
+    esac
+    
+    # Остановить другие версии PHP-FPM
+    log_info "Остановка других версий PHP-FPM..."
+    case $os_type in
+        ubuntu|debian)
+            # Остановить все версии PHP-FPM, кроме нужной
+            for fpm_service in $(systemctl list-units --type=service --all | grep -oP 'php[0-9]+\.[0-9]+-fpm' 2>/dev/null || true); do
+                if [ "$fpm_service" != "$php_service" ]; then
+                    systemctl stop "$fpm_service" 2>/dev/null || true
+                    systemctl disable "$fpm_service" 2>/dev/null || true
+                fi
+            done
+            ;;
+        almalinux)
+            # Остановить все версии PHP-FPM, кроме нужной
+            for fpm_service in $(systemctl list-units --type=service --all | grep -oP 'php[0-9]+-php-fpm' 2>/dev/null || true); do
+                if [ "$fpm_service" != "$php_service" ]; then
+                    systemctl stop "$fpm_service" 2>/dev/null || true
+                    systemctl disable "$fpm_service" 2>/dev/null || true
+                fi
+            done
+            ;;
+    esac
+    
+    # Запустить нужный сервис PHP-FPM
+    run_cmd "systemctl enable $php_service"
+    run_cmd "systemctl start $php_service"
+    
+    # Проверить, что версия переключилась
+    if command_exists php; then
+        local active_version=$(php -v 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        if [ "$active_version" = "$target_version" ]; then
+            ok "Переключение на PHP $target_version завершено успешно"
+        else
+            log_warn "PHP переключён на $target_version, но активна версия $active_version"
+            log_warn "Попытка принудительного переключения через альтернативы..."
+            
+            # Принудительное переключение для Ubuntu/Debian
+            if [ "$os_type" != "almalinux" ]; then
+                local php_bin="/usr/bin/php${major}.${minor}"
+                if [ -f "$php_bin" ]; then
+                    update-alternatives --set php "$php_bin" 2>/dev/null || true
+                fi
+            fi
+        fi
+    else
+        log_error "PHP не найден после переключения"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Установка PHP (версия зависит от WORKERNET_VERSION)
+install_php() {
+    # Определить требуемую версию PHP
     local required_php_version
     required_php_version=$(check_php_version_compatibility 2>/dev/null)
     local check_result=$?
     
     # Если проверка вернула ошибку
     if [ $check_result -ne 0 ]; then
-        return 1
+        # PHP установлен, но несовместим - нужно переключить
+        check_php_version_compatibility  # Показать сообщение
+        
+        # Автоматически переключить на нужную версию
+        log_info "Автоматическое переключение на требуемую версию PHP..."
+        switch_php_version "$required_php_version" || return 1
+        
+        # Проверить после переключения
+        if ! check_php_version_compatibility >/dev/null 2>&1; then
+            log_error "Не удалось переключить на PHP $required_php_version"
+            return 1
+        fi
+        
+        return 0
     fi
     
-    # Определить версию PHP для установки
+    # Если PHP уже установлен и совместим
+    if command_exists php; then
+        check_php_version_compatibility  # Показать сообщение об успехе
+        return 0
+    fi
+    
+    # PHP не установлен - установить нужную версию
     if [ "$required_php_version" = "7.4" ]; then
         log_section "⚙️ УСТАНОВКА PHP 7.4"
-        log_warn "⚠️  Для WorkerNet 3.x требуется PHP 7.4"
-        log_warn "   Установка PHP 7.4 будет реализована в будущих версиях"
-        log_warn "   Пожалуйста, установите PHP 7.4 вручную перед продолжением"
-        log_error "Установка PHP 7.4 через скрипт пока не поддерживается"
-        return 1
     else
         log_section "⚙️ УСТАНОВКА PHP 8.3"
     fi
     
     show_progress "Установка PHP"
     
-    # Проверка idempotent для PHP 8.3
-    if command_exists php && php -v | grep -q "PHP 8.3"; then
-        ok "PHP 8.3 уже установлен, пропускаем"
-        return 0
-    fi
-    
     local os_type=$(get_os_type)
     
     case $os_type in
         ubuntu)
-            install_php_ubuntu
+            if [ "$required_php_version" = "7.4" ]; then
+                install_php74_ubuntu || return 1
+            else
+                install_php_ubuntu || return 1
+            fi
             ;;
         debian)
-            install_php_debian
+            if [ "$required_php_version" = "7.4" ]; then
+                install_php74_debian || return 1
+            else
+                install_php_debian || return 1
+            fi
             ;;
         almalinux)
-            install_php_almalinux
+            if [ "$required_php_version" = "7.4" ]; then
+                install_php74_almalinux || return 1
+            else
+                install_php_almalinux || return 1
+            fi
             ;;
         *)
             log_error "Unsupported OS for Установка PHP"
@@ -321,15 +721,24 @@ install_php_almalinux() {
 configure_php() {
     log_info "Настройка PHP..."
     
+    # Определить установленную версию PHP
+    local php_version="8.3"
+    if command_exists php; then
+        php_version=$(php -v 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+    fi
+    
     local os_type=$(get_os_type)
-    local php_ini_fpm="/etc/php/8.3/fpm/php.ini"
-    local php_ini_cli="/etc/php/8.3/cli/php.ini"
-    local php_fpm_conf="/etc/php/8.3/fpm/pool.d/www.conf"
+    local php_ini_fpm="/etc/php/${php_version}/fpm/php.ini"
+    local php_ini_cli="/etc/php/${php_version}/cli/php.ini"
+    local php_fpm_conf="/etc/php/${php_version}/fpm/pool.d/www.conf"
     
     if [ "$os_type" = "almalinux" ]; then
-        php_ini_fpm="/etc/opt/remi/php83/php.ini"
+        local major=$(echo "$php_version" | cut -d. -f1)
+        local minor=$(echo "$php_version" | cut -d. -f2)
+        local php_dir="/etc/opt/remi/php${major}${minor}"
+        php_ini_fpm="${php_dir}/php.ini"
         php_ini_cli="$php_ini_fpm"
-        php_fpm_conf="/etc/opt/remi/php83/php-fpm.d/www.conf"
+        php_fpm_conf="${php_dir}/php-fpm.d/www.conf"
     fi
     
     # Получить timezone
@@ -364,14 +773,17 @@ configure_php() {
     fi
     
     # Перезапустить PHP-FPM
-    local php_service="php8.3-fpm"
+    local major=$(echo "$php_version" | cut -d. -f1)
+    local minor=$(echo "$php_version" | cut -d. -f2)
+    local php_service="php${major}.${minor}-fpm"
+    
     if [ "$os_type" = "almalinux" ]; then
-        php_service="php83-php-fpm"
+        php_service="php${major}${minor}-php-fpm"
     fi
     
     run_cmd "systemctl restart $php_service"
     
-    ok "PHP настроен успешно"
+    ok "PHP настроен успешно (версия $php_version)"
 }
 
 # Установка Python
@@ -552,6 +964,12 @@ setup_backend() {
 
 # Экспортировать функции
 export -f check_php_version_compatibility
+export -f remove_other_php_versions
+export -f is_php_version_installed
+export -f install_php74_ubuntu
+export -f install_php74_debian
+export -f install_php74_almalinux
+export -f switch_php_version
 export -f install_php
 export -f install_php_ubuntu
 export -f install_php_debian
