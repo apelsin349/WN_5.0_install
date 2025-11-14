@@ -115,27 +115,48 @@ get_php_fpm_socket() {
     local os_type=$(get_os_type)
     local php_socket=""
     
+    # Определить версию PHP в зависимости от WORKERNET_VERSION
+    local expected_php_version="8.3"
+    if [ -n "${WORKERNET_VERSION:-}" ] && [ "$WORKERNET_VERSION" = "3.x" ]; then
+        expected_php_version="7.4"
+    fi
+    
     # Попробовать определить путь автоматически
     local possible_paths=()
     
     case $os_type in
         ubuntu|debian)
-            possible_paths=(
-                "/run/php/php8.3-fpm.sock"
-                "/run/php/php8.2-fpm.sock"
-                "/run/php/php8.1-fpm.sock"
-                "/var/run/php/php8.3-fpm.sock"
-                "/var/run/php/php8.2-fpm.sock"
-            )
+            if [ "$expected_php_version" = "7.4" ]; then
+                possible_paths=(
+                    "/run/php/php7.4-fpm.sock"
+                    "/var/run/php/php7.4-fpm.sock"
+                )
+            else
+                possible_paths=(
+                    "/run/php/php8.3-fpm.sock"
+                    "/run/php/php8.2-fpm.sock"
+                    "/run/php/php8.1-fpm.sock"
+                    "/var/run/php/php8.3-fpm.sock"
+                    "/var/run/php/php8.2-fpm.sock"
+                )
+            fi
             ;;
         almalinux)
-            possible_paths=(
-                "/var/opt/remi/php83/run/php-fpm/www.sock"
-                "/var/opt/remi/php82/run/php-fpm/www.sock"
-                "/var/opt/remi/php81/run/php-fpm/www.sock"
-                "/run/php-fpm/www.sock"
-                "/var/run/php-fpm/www.sock"
-            )
+            if [ "$expected_php_version" = "7.4" ]; then
+                possible_paths=(
+                    "/var/opt/remi/php74/run/php-fpm/www.sock"
+                    "/run/php-fpm/www.sock"
+                    "/var/run/php-fpm/www.sock"
+                )
+            else
+                possible_paths=(
+                    "/var/opt/remi/php83/run/php-fpm/www.sock"
+                    "/var/opt/remi/php82/run/php-fpm/www.sock"
+                    "/var/opt/remi/php81/run/php-fpm/www.sock"
+                    "/run/php-fpm/www.sock"
+                    "/var/run/php-fpm/www.sock"
+                )
+            fi
             ;;
     esac
     
@@ -152,12 +173,20 @@ get_php_fpm_socket() {
     if [ -z "$php_socket" ]; then
         case $os_type in
             ubuntu|debian)
-                php_socket="unix:/run/php/php8.3-fpm.sock|fcgi://localhost"
-                log_warn "PHP-FPM сокет не найден, используем путь по умолчанию для Ubuntu/Debian"
+                if [ "$expected_php_version" = "7.4" ]; then
+                    php_socket="unix:/run/php/php7.4-fpm.sock|fcgi://localhost"
+                else
+                    php_socket="unix:/run/php/php8.3-fpm.sock|fcgi://localhost"
+                fi
+                log_warn "PHP-FPM сокет не найден, используем путь по умолчанию для Ubuntu/Debian (PHP $expected_php_version)"
                 ;;
             almalinux)
-                php_socket="unix:/var/opt/remi/php83/run/php-fpm/www.sock|fcgi://localhost"
-                log_warn "PHP-FPM сокет не найден, используем путь по умолчанию для AlmaLinux"
+                if [ "$expected_php_version" = "7.4" ]; then
+                    php_socket="unix:/var/opt/remi/php74/run/php-fpm/www.sock|fcgi://localhost"
+                else
+                    php_socket="unix:/var/opt/remi/php83/run/php-fpm/www.sock|fcgi://localhost"
+                fi
+                log_warn "PHP-FPM сокет не найден, используем путь по умолчанию для AlmaLinux (PHP $expected_php_version)"
                 ;;
         esac
     fi
@@ -170,7 +199,15 @@ configure_apache() {
     log_info "Настройка Apache..."
     
     local os_type=$(get_os_type)
-    local docroot="${INSTALL_DIR}/public"
+    
+    # Определить docroot в зависимости от версии WorkerNet
+    local docroot
+    if [ -n "${WORKERNET_VERSION:-}" ] && [ "$WORKERNET_VERSION" = "3.x" ]; then
+        docroot="${INSTALL_DIR}/userside3"
+    else
+        docroot="${INSTALL_DIR}/public"
+    fi
+    
     local domain_name="$DOMAIN"
     
     if [ "$domain_name" = "_" ]; then
@@ -364,7 +401,15 @@ configure_nginx() {
     log_info "Настройка NGINX..."
     
     local os_type=$(get_os_type)
-    local docroot="${INSTALL_DIR}/public"
+    
+    # Определить docroot в зависимости от версии WorkerNet
+    local docroot
+    if [ -n "${WORKERNET_VERSION:-}" ] && [ "$WORKERNET_VERSION" = "3.x" ]; then
+        docroot="${INSTALL_DIR}/userside3"
+    else
+        docroot="${INSTALL_DIR}/public"
+    fi
+    
     local domain_name="$DOMAIN"
     
     if [ "$domain_name" = "_" ]; then
@@ -384,6 +429,7 @@ configure_nginx() {
     # Автоматически определить путь к PHP-FPM сокету
     php_socket=$(get_php_fpm_socket | sed 's/|fcgi:\/\/localhost//')
     log_info "Используется PHP-FPM сокет для NGINX: $php_socket"
+    log_info "Используется docroot: $docroot (WorkerNet ${WORKERNET_VERSION:-unknown})"
     
     # Проверить существующий конфиг и спросить о перезаписи
     if [ -f "$nginx_conf" ]; then
@@ -468,8 +514,8 @@ server {
         proxy_set_header Host \$host;
     }
     
-    location ~ /\.ht { 
-        deny  all; 
+    location ~ /\.ht {
+        deny  all;
     }
 }
 EOF

@@ -192,27 +192,57 @@ download_installer_phar() {
     
     cd "$INSTALL_DIR"
     
-    # Загрузить через PHP
-    if php -r "copy('$phar_url', 'workernet_install.phar');" ; then
+    local php_output=""
+    local php_status=0
+    
+    php_output=$(php -r "if (!copy('$phar_url', 'workernet_install.phar')) { \$e = error_get_last(); if (\$e) { fwrite(STDERR, trim(\$e['message']).PHP_EOL); } exit(1); }" 2>&1) || php_status=$?
+    
+    if [ $php_status -eq 0 ] && [ -s "$phar_file" ]; then
         ok "Phar файл загружен успешно"
         CREATED_FILES+=("$phar_file")
     else
-        log_error "Не удалось загрузить phar файл"
-        log_warn "Попытка с curl..."
+        if [ -n "$php_output" ]; then
+            while IFS= read -r line; do
+                log_warn "$line"
+            done <<<"$php_output"
+        else
+            log_warn "Не удалось загрузить phar через PHP"
+        fi
         
-        if curl -f -L -o "$phar_file" "$phar_url"; then
+        if echo "$php_output" | grep -qi "401 Unauthorized"; then
+            log_warn "HTTP 401 Unauthorized при загрузке ${phar_url}. Проверьте учетные данные или доступ к репозиторию."
+        fi
+        
+        rm -f "$phar_file" 2>/dev/null || true
+        log_warn "Попытка загрузить phar через curl..."
+        
+        if curl -f -L -o "$phar_file" "$phar_url" 2> >(while read -r line; do log_warn "$line"; done); then
+            if [ ! -s "$phar_file" ]; then
+                log_error "Phar файл не был загружен (пустой файл)"
+                rm -f "$phar_file" 2>/dev/null || true
+                return 1
+            fi
             ok "Phar файл загружен через curl"
             CREATED_FILES+=("$phar_file")
         else
-            log_error "Не удалось загрузить phar файл with curl"
+            log_error "Не удалось загрузить phar файл через curl"
+            rm -f "$phar_file" 2>/dev/null || true
             return 1
         fi
     fi
     
     # Установить права на phar файл (критично!)
     log_info "Установка прав на phar файл..."
-    chown www-data:www-data "$phar_file"
-    chmod 775 "$phar_file"  # Writable для owner и group
+    if ! chown www-data:www-data "$phar_file"; then
+        log_error "Не удалось изменить владельца phar файла"
+        return 1
+    fi
+    
+    if ! chmod 775 "$phar_file"; then
+        log_error "Не удалось установить права на phar файл"
+        return 1
+    fi
+    
     ok "Права на phar файл установлены (www-data:www-data, 775)"
     
     return 0

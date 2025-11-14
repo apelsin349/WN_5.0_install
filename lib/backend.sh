@@ -2,13 +2,112 @@
 # backend.sh - Установка PHP 8.3 + Python 3 + Supervisor
 # WorkerNet Installer v5.0
 
-# Установка PHP 8.3
+# Проверка совместимости версии PHP с WorkerNet
+check_php_version_compatibility() {
+    local required_php_version
+    local current_php_version
+    
+    # Определить требуемую версию PHP в зависимости от WORKERNET_VERSION
+    if [ -n "${WORKERNET_VERSION:-}" ]; then
+        case "$WORKERNET_VERSION" in
+            "3.x")
+                required_php_version="7.4"
+                ;;
+            "4.x"|"5.x")
+                required_php_version="8.3"
+                ;;
+            *)
+                required_php_version="8.3"
+                log_warn "Неизвестная версия WorkerNet: $WORKERNET_VERSION, используем PHP 8.3 по умолчанию"
+                ;;
+        esac
+    else
+        required_php_version="8.3"
+        log_warn "WORKERNET_VERSION не установлена, используем PHP 8.3 по умолчанию"
+    fi
+    
+    # Если PHP уже установлен, проверить его версию
+    if command_exists php; then
+        current_php_version=$(php -v 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
+        if [ -n "$current_php_version" ]; then
+            local php_major="${current_php_version%%.*}"
+            local php_minor=$(echo "$current_php_version" | cut -d. -f2)
+            local req_major="${required_php_version%%.*}"
+            local req_minor=$(echo "$required_php_version" | cut -d. -f2)
+            
+            if [ "$WORKERNET_VERSION" = "3.x" ]; then
+                # Для версии 3.x: PHP не выше 7.4
+                if [ "$php_major" -eq 7 ] && [ "$php_minor" -le 4 ]; then
+                    log_info "Установлен PHP $current_php_version (WorkerNet 3.x: требуется <= 7.4) ✓"
+                    return 0
+                elif [ "$php_major" -lt 7 ]; then
+                    log_info "Установлен PHP $current_php_version (WorkerNet 3.x: требуется <= 7.4) ✓"
+                    return 0
+                else
+                    log_error "❌ Установлен PHP $current_php_version, но для WorkerNet 3.x требуется PHP <= 7.4"
+                    log_error "   Пожалуйста, удалите PHP $current_php_version и установите PHP 7.4"
+                    return 1
+                fi
+            else
+                # Для версий 4.x и 5.x: PHP 8.x
+                if [ "$php_major" -ge 8 ]; then
+                    log_info "Установлен PHP $current_php_version (WorkerNet ${WORKERNET_VERSION:-unknown}: требуется 8+) ✓"
+                    return 0
+                else
+                    log_error "❌ Установлен PHP $current_php_version, но для WorkerNet ${WORKERNET_VERSION:-unknown} требуется PHP 8+"
+                    log_error "   Пожалуйста, удалите PHP $current_php_version и установите PHP 8.3"
+                    return 1
+                fi
+            fi
+        fi
+    fi
+    
+    # Если PHP не установлен, вернуть требуемую версию
+    echo "$required_php_version"
+    return 0
+}
+
+# Установка PHP (версия зависит от WORKERNET_VERSION)
 install_php() {
-    log_section "⚙️ УСТАНОВКА PHP 8.3"
+    # Сначала проверить, установлен ли PHP
+    if command_exists php; then
+        # PHP уже установлен - проверить совместимость
+        if ! check_php_version_compatibility >/dev/null 2>&1; then
+            # PHP установлен, но несовместим
+            check_php_version_compatibility  # Показать сообщение об ошибке
+            return 1
+        else
+            # PHP установлен и совместим
+            check_php_version_compatibility  # Показать сообщение об успехе
+            return 0
+        fi
+    fi
+    
+    # PHP не установлен - определить требуемую версию
+    local required_php_version
+    required_php_version=$(check_php_version_compatibility 2>/dev/null)
+    local check_result=$?
+    
+    # Если проверка вернула ошибку
+    if [ $check_result -ne 0 ]; then
+        return 1
+    fi
+    
+    # Определить версию PHP для установки
+    if [ "$required_php_version" = "7.4" ]; then
+        log_section "⚙️ УСТАНОВКА PHP 7.4"
+        log_warn "⚠️  Для WorkerNet 3.x требуется PHP 7.4"
+        log_warn "   Установка PHP 7.4 будет реализована в будущих версиях"
+        log_warn "   Пожалуйста, установите PHP 7.4 вручную перед продолжением"
+        log_error "Установка PHP 7.4 через скрипт пока не поддерживается"
+        return 1
+    else
+        log_section "⚙️ УСТАНОВКА PHP 8.3"
+    fi
     
     show_progress "Установка PHP"
     
-    # Проверка idempotent
+    # Проверка idempotent для PHP 8.3
     if command_exists php && php -v | grep -q "PHP 8.3"; then
         ok "PHP 8.3 уже установлен, пропускаем"
         return 0
@@ -452,6 +551,7 @@ setup_backend() {
 }
 
 # Экспортировать функции
+export -f check_php_version_compatibility
 export -f install_php
 export -f install_php_ubuntu
 export -f install_php_debian

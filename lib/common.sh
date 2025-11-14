@@ -334,15 +334,54 @@ check_minimum_versions() {
         fi
     fi
     
-    # PHP
+    # PHP - проверка в зависимости от версии WorkerNet
     if command_exists php; then
         local php_version=$(php -v 2>/dev/null | grep -oP '\d+\.\d+' | head -1)
         if [ -n "$php_version" ]; then
-            if [ "${php_version%%.*}" -ge 8 ]; then
-                log_debug "PHP $php_version (требуется 8+)"
+            local php_major="${php_version%%.*}"
+            local php_minor=$(echo "$php_version" | cut -d. -f2)
+            
+            # Проверка версии PHP в зависимости от версии WorkerNet
+            if [ -n "${WORKERNET_VERSION:-}" ]; then
+                case "$WORKERNET_VERSION" in
+                    "3.x")
+                        # Для версии 3.x: PHP не выше 7.4
+                        if [ "$php_major" -eq 7 ] && [ "$php_minor" -le 4 ]; then
+                            log_debug "PHP $php_version (WorkerNet 3.x: требуется <= 7.4)"
+                        elif [ "$php_major" -lt 7 ]; then
+                            log_debug "PHP $php_version (WorkerNet 3.x: требуется <= 7.4)"
+                        else
+                            log_warn "PHP $php_version (WorkerNet 3.x: требуется <= 7.4)"
+                            ((errors++))
+                        fi
+                        ;;
+                    "4.x"|"5.x")
+                        # Для версий 4.x и 5.x: PHP 8.x
+                        if [ "$php_major" -ge 8 ]; then
+                            log_debug "PHP $php_version (WorkerNet ${WORKERNET_VERSION}: требуется 8+)"
+                        else
+                            log_warn "PHP $php_version (WorkerNet ${WORKERNET_VERSION}: требуется 8+)"
+                            ((errors++))
+                        fi
+                        ;;
+                    *)
+                        # По умолчанию: PHP 8+
+                        if [ "$php_major" -ge 8 ]; then
+                            log_debug "PHP $php_version (требуется 8+)"
+                        else
+                            log_warn "PHP $php_version (требуется 8+)"
+                            ((errors++))
+                        fi
+                        ;;
+                esac
             else
-                log_warn "PHP $php_version (требуется 8+)"
-                ((errors++))
+                # Если WORKERNET_VERSION не установлена, проверка по умолчанию
+                if [ "$php_major" -ge 8 ]; then
+                    log_debug "PHP $php_version (требуется 8+)"
+                else
+                    log_warn "PHP $php_version (требуется 8+)"
+                    ((errors++))
+                fi
             fi
         fi
     fi
