@@ -2,10 +2,9 @@
 # backend.sh - Установка PHP 8.3 + Python 3 + Supervisor
 # WorkerNet Installer v5.0
 
-# Проверка совместимости версии PHP с WorkerNet
-check_php_version_compatibility() {
-    local required_php_version
-    local current_php_version
+# Получить требуемую версию PHP для WorkerNet
+get_required_php_version() {
+    local required_php_version="8.3"
     
     # Определить требуемую версию PHP в зависимости от WORKERNET_VERSION
     if [ -n "${WORKERNET_VERSION:-}" ]; then
@@ -18,13 +17,20 @@ check_php_version_compatibility() {
                 ;;
             *)
                 required_php_version="8.3"
-                log_warn "Неизвестная версия WorkerNet: $WORKERNET_VERSION, используем PHP 8.3 по умолчанию"
                 ;;
         esac
-    else
-        required_php_version="8.3"
-        log_warn "WORKERNET_VERSION не установлена, используем PHP 8.3 по умолчанию"
     fi
+    
+    echo "$required_php_version"
+}
+
+# Проверка совместимости версии PHP с WorkerNet
+check_php_version_compatibility() {
+    local required_php_version
+    local current_php_version
+    
+    # Получить требуемую версию
+    required_php_version=$(get_required_php_version)
     
     # Если PHP уже установлен, проверить его версию
     if command_exists php; then
@@ -32,8 +38,6 @@ check_php_version_compatibility() {
         if [ -n "$current_php_version" ]; then
             local php_major="${current_php_version%%.*}"
             local php_minor=$(echo "$current_php_version" | cut -d. -f2)
-            local req_major="${required_php_version%%.*}"
-            local req_minor=$(echo "$required_php_version" | cut -d. -f2)
             
             if [ "$WORKERNET_VERSION" = "3.x" ]; then
                 # Для версии 3.x: PHP не выше 7.4
@@ -45,7 +49,7 @@ check_php_version_compatibility() {
                     return 0
                 else
                     log_error "❌ Установлен PHP $current_php_version, но для WorkerNet 3.x требуется PHP <= 7.4"
-                    log_error "   Пожалуйста, удалите PHP $current_php_version и установите PHP 7.4"
+                    log_error "   Автоматически переключим на PHP 7.4"
                     return 1
                 fi
             else
@@ -55,15 +59,14 @@ check_php_version_compatibility() {
                     return 0
                 else
                     log_error "❌ Установлен PHP $current_php_version, но для WorkerNet ${WORKERNET_VERSION:-unknown} требуется PHP 8+"
-                    log_error "   Пожалуйста, удалите PHP $current_php_version и установите PHP 8.3"
+                    log_error "   Автоматически переключим на PHP 8.3"
                     return 1
                 fi
             fi
         fi
     fi
     
-    # Если PHP не установлен, вернуть требуемую версию
-    echo "$required_php_version"
+    # Если PHP не установлен, версия совместима (будет установлена нужная)
     return 0
 }
 
@@ -463,22 +466,21 @@ switch_php_version() {
 
 # Установка PHP (версия зависит от WORKERNET_VERSION)
 install_php() {
-    # Определить требуемую версию PHP
+    # Получить требуемую версию PHP
     local required_php_version
-    required_php_version=$(check_php_version_compatibility 2>/dev/null)
-    local check_result=$?
+    required_php_version=$(get_required_php_version)
     
-    # Если проверка вернула ошибку
-    if [ $check_result -ne 0 ]; then
+    # Проверить совместимость текущей версии PHP
+    if ! check_php_version_compatibility; then
         # PHP установлен, но несовместим - нужно переключить
-        check_php_version_compatibility  # Показать сообщение
+        # Сообщение об ошибке уже показано в check_php_version_compatibility
         
         # Автоматически переключить на нужную версию
         log_info "Автоматическое переключение на требуемую версию PHP..."
         switch_php_version "$required_php_version" || return 1
         
         # Проверить после переключения
-        if ! check_php_version_compatibility >/dev/null 2>&1; then
+        if ! check_php_version_compatibility; then
             log_error "Не удалось переключить на PHP $required_php_version"
             return 1
         fi
@@ -488,7 +490,7 @@ install_php() {
     
     # Если PHP уже установлен и совместим
     if command_exists php; then
-        check_php_version_compatibility  # Показать сообщение об успехе
+        # Сообщение об успехе уже показано в check_php_version_compatibility
         return 0
     fi
     
@@ -963,6 +965,7 @@ setup_backend() {
 }
 
 # Экспортировать функции
+export -f get_required_php_version
 export -f check_php_version_compatibility
 export -f remove_other_php_versions
 export -f is_php_version_installed
